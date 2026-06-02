@@ -141,6 +141,7 @@ GameObject:
   - component: {fileID: 81622710}
   - component: {fileID: 81622711}
   - component: {fileID: 81622712}
+  - component: {fileID: 81622713}
   m_Layer: 6
   m_Name: Player
   m_TagString: Player
@@ -243,6 +244,7 @@ MonoBehaviour:
   rollCooldown: 1.2
   rotationSpeed: 15
   gravity: -20
+  boundary: {fileID: 0}
 --- !u!143 &81622706
 CharacterController:
   m_ObjectHideFlags: 0
@@ -495,6 +497,50 @@ SpriteRenderer:
   m_WasSpriteAssigned: 0
   m_MaskInteraction: 0
   m_SpriteSortPoint: 0
+--- !u!114 &81622713
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 81622701}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f836c69d1be210643943f298453e0f2d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  heightSource: {fileID: 1950520771}
+  chunkedBuilder: {fileID: 1950520777}
+  seamlessBuilder: {fileID: 1950520776}
+  bandWidth: 9
+  edgePadding: 1
+  falloff:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  useManualBounds: 0
+  manualHalfWidth: 100
+  manualHalfDepth: 100
 --- !u!1 &330585543
 GameObject:
   m_ObjectHideFlags: 0
@@ -943,10 +989,12 @@ GameObject:
   - component: {fileID: 1950520770}
   - component: {fileID: 1950520769}
   - component: {fileID: 1950520768}
-  - component: {fileID: 1950520767}
   - component: {fileID: 1950520766}
   - component: {fileID: 1950520765}
   - component: {fileID: 1950520773}
+  - component: {fileID: 1950520776}
+  - component: {fileID: 1950520778}
+  - component: {fileID: 1950520777}
   m_Layer: 0
   m_Name: Terrain
   m_TagString: Untagged
@@ -967,7 +1015,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   heightSource: {fileID: 1950520771}
-  terrainBuilder: {fileID: 1950520767}
+  terrainBuilder: {fileID: 1950520776}
   objectTypes:
   - name: cube
     prefab: {fileID: 7142537620106917095, guid: 1b81ffb1abe63a64e936967afa3b1dd3,
@@ -983,14 +1031,14 @@ MonoBehaviour:
     spawnChance: 10
     minDistanceBetweenObjects: 1
   - name: Tree
-    prefab: {fileID: 6950665166383066492, guid: 74770e46b32b15246a77422d6672cd69,
+    prefab: {fileID: 7434248268450739963, guid: 3abe6a6fa5402984eb939942a4aa94cb,
       type: 3}
-    count: 5
+    count: 27
     minHeight: 0
     maxHeight: 5
     randomRotation: 0
-    minScale: 1
-    maxScale: 1
+    minScale: 2
+    maxScale: 2
     alignToSurface: 0
     heightOffset: 0
     spawnChance: 10
@@ -1012,32 +1060,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   heightGenerator: {fileID: 1950520771}
-  terrainBuilder: {fileID: 1950520767}
+  terrainBuilder: {fileID: 0}
+  chunkedTerrainBuilder: {fileID: 1950520777}
   objectPlacer: {fileID: 1950520765}
-  zoneSystem: {fileID: 0}
+  instancedObjectPlacer: {fileID: 0}
+  zoneSystem: {fileID: 1950520773}
+  fogCurtain: {fileID: 1950520778}
   generateOnStart: 1
   clearBeforeGenerate: 1
   logTimings: 1
---- !u!114 &1950520767
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1950520764}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 360b1a357afbbbf4193397bfad0fa7d0, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  heightSource: {fileID: 1950520771}
-  tileSize: 4
-  tileThickness: 0.2
-  addFoundation: 0
-  foundationDepth: 10
-  lowColor: {r: 0.3, g: 0.3, b: 0.3, a: 1}
-  highColor: {r: 0.9, g: 0.9, b: 0.9, a: 1}
-  foundationColor: {r: 0.2, g: 0.15, b: 0.1, a: 1}
 --- !u!64 &1950520768
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -1122,12 +1153,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9126e7d74644ee7479bea464b72418ca, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  width: 40
-  depth: 40
+  width: 100
+  depth: 100
   noiseScale: 0.5
   maxHeight: 0.7
   randomSeed: 1
-  seed: 1235
+  seed: 53692
   useJobs: 1
   jobsMinCells: 10000
 --- !u!4 &1950520772
@@ -1158,13 +1189,81 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   heightSource: {fileID: 1950520771}
-  terrainBuilder: {fileID: 1950520767}
+  terrainBuilder: {fileID: 1950520776}
   zones: []
   showGizmos: 1
   showZoneLabels: 1
   gizmoHeight: 0.05
   gizmoAlpha: 0.5
   updateColorsOnMesh: 1
+--- !u!114 &1950520776
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1950520764}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 360b1a357afbbbf4193397bfad0fa7d0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  heightSource: {fileID: 1950520771}
+  tileSize: 4
+  tileThickness: 0.2
+  addFoundation: 1
+  foundationDepth: 10
+  lowColor: {r: 0.3, g: 0.3, b: 0.3, a: 1}
+  highColor: {r: 0.9, g: 0.9, b: 0.9, a: 1}
+  foundationColor: {r: 0.2, g: 0.15, b: 0.1, a: 1}
+--- !u!114 &1950520777
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1950520764}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 761eb3056a6bf0443b58ee3e152b43a3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  heightSource: {fileID: 1950520771}
+  tileSize: 4
+  chunkSize: 10
+  addFoundation: 1
+  foundationDepth: 10
+  lowColor: {r: 0.3, g: 0.3, b: 0.3, a: 1}
+  highColor: {r: 0.9, g: 0.9, b: 0.9, a: 1}
+  foundationColor: {r: 0.2, g: 0.15, b: 0.1, a: 1}
+  terrainMaterial: {fileID: 2100000, guid: b0fffd1b66a6e1945ab30e915af3cf53, type: 2}
+--- !u!114 &1950520778
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1950520764}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4811dfa6797b34e4a963dc134015ff0e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  heightSource: {fileID: 1950520771}
+  chunkedBuilder: {fileID: 1950520777}
+  seamlessBuilder: {fileID: 1950520776}
+  curtainHeight: 6
+  curtainThickness: 10
+  inset: 2
+  baseY: -1
+  fogColor: {r: 0.88, g: 0.9, b: 0.94, a: 1}
+  maxAlpha: 0.5
+  particleSize: 12
+  particleLifetime: 6
+  particlesPerMeter: 0.12
+  upwardDrift: 0.15
+  turbulence: 0.4
+  fogMaterial: {fileID: 10308, guid: 0000000000000000f000000000000000, type: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

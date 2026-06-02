@@ -3,17 +3,17 @@ using UnityEngine.Rendering;
 using System.Collections.Generic;
 
 /// <summary>
-/// Расставляет объекты через GPU Instancing — один draw call на тип объекта
-/// вместо одного GameObject на каждый экземпляр.
-/// 
-/// Ключевые отличия от ObjectPlacer:
-/// - Центры объектов привязаны к центрам клеток (важно для путей и логики)
-/// - Один тип = один DrawMeshInstanced вызов (макс. 1023 на батч, автоматически разбивается)
-/// - Нет GameObject'ов в сцене = нет overhead от Transform/Renderer компонентов
-/// 
-/// ВАЖНО: объекты не участвуют в физике и не имеют коллайдеров.
-/// Для коллайдеров используйте обычный ObjectPlacer для важных объектов (деревья, стены),
-/// и этот — для декора (трава, мелкие камни).
+/// Размещает объекты через GPU Instancing в один draw call на тип объекта
+/// вместо создания отдельного GameObject на каждый экземпляр.
+///
+/// Отличия от ObjectPlacer:
+/// - хранит трансформы экземпляров в виде матриц (нет реальных объектов в сцене)
+/// - один тип = один вызов DrawMeshInstanced пачками (макс. 1023 за вызов)
+/// - нет GameObject'ов = нет overhead на Transform/Renderer компоненты
+///
+/// Минус: объекты не участвуют в физике и не имеют коллайдеров.
+/// Для интерактивных объектов используйте ObjectPlacer (деревья, камни),
+/// а тут — фон (трава, мелкие детали).
 /// </summary>
 public class InstancedObjectPlacer : MonoBehaviour
 {
@@ -25,16 +25,16 @@ public class InstancedObjectPlacer : MonoBehaviour
         public Material material; // должен иметь Enable GPU Instancing = true
         public int subMeshIndex = 0;
 
-        [Header("Размещение")]
-        [Tooltip("Сколько клеток карты занимает один объект (1 = один объект максимум на клетку)")]
+        [Header("Плотность")]
+        [Tooltip("Каждые сколько ячеек ставить один объект (1 = один объект на ячейку)")]
         public int cellsPerObject = 1;
-        [Tooltip("Доля клеток карты, где появится объект (0–1)")]
+        [Tooltip("Чем больше — тем плотнее засев (0..1)")]
         [Range(0f, 1f)] public float density = 0.3f;
         public float minHeight = 0f;
         public float maxHeight = 1f;
 
-        [Header("Случайность в пределах клетки")]
-        [Tooltip("Насколько сильно смещать от центра клетки (0 = строго по центру)")]
+        [Header("Смещение в пределах ячейки")]
+        [Tooltip("Разброс позиции внутри ячейки (0 = строго в центре)")]
         [Range(0f, 0.5f)] public float cellJitter = 0.3f;
 
         [Header("Трансформ")]
@@ -43,11 +43,11 @@ public class InstancedObjectPlacer : MonoBehaviour
         public float maxScale = 1.2f;
         public float heightOffset = 0f;
 
-        [Header("Рендер")]
+        [Header("Тени")]
         public ShadowCastingMode shadowCasting = ShadowCastingMode.On;
         public bool receiveShadows = true;
 
-        // Данные для рендеринга (заполняются при генерации)
+        // Данные для отрисовки (заполняются при генерации)
         [HideInInspector] public List<Matrix4x4> matrices = new List<Matrix4x4>();
         [HideInInspector] public MaterialPropertyBlock propertyBlock;
     }
@@ -55,7 +55,7 @@ public class InstancedObjectPlacer : MonoBehaviour
     [Header("Источник высот")]
     public HeightMapGenerator heightSource;
 
-    [Header("Источник меша (для tileSize)")]
+    [Header("Источник tileSize")]
     public ChunkedTerrainBuilder terrainBuilder;
 
     [Header("Типы объектов")]
@@ -64,6 +64,10 @@ public class InstancedObjectPlacer : MonoBehaviour
     [Header("Сид генерации")]
     public bool randomSeed = true;
     public int seed = 42;
+
+    [Header("Отступ от края (в ячейках)")]
+    [Tooltip("Не спавнить объекты в приграничной полосе. ~совпадает с толщиной тумана при tileSize=4.")]
+    public int borderCells = 2;
 
     private bool isGenerated = false;
 
@@ -110,20 +114,24 @@ public class InstancedObjectPlacer : MonoBehaviour
 
     private void PlaceType(InstancedObjectType objType, int w, int d, float ts, Vector3 origin)
     {
-        // Перебираем клетки с шагом cellsPerObject
+        // Проходим карту с шагом cellsPerObject
         int step = Mathf.Max(1, objType.cellsPerObject);
 
         for (int x = 0; x < w; x += step)
         {
             for (int z = 0; z < d; z += step)
             {
-                // Проверяем плотность
+                // Не спавнить в приграничной полосе (прячется под туман)
+                if (x < borderCells || x >= w - borderCells || z < borderCells || z >= d - borderCells)
+                    continue;
+
+                // Случайная плотность
                 if (UnityEngine.Random.value > objType.density) continue;
 
                 float h = heightSource.GetHeight(x, z);
                 if (h < objType.minHeight || h > objType.maxHeight) continue;
 
-                // Центр клетки + небольшой jitter
+                // Центр ячейки + случайный jitter
                 float jitterRange = ts * objType.cellJitter;
                 float px = origin.x + x * ts + ts * 0.5f + UnityEngine.Random.Range(-jitterRange, jitterRange);
                 float pz = origin.z + z * ts + ts * 0.5f + UnityEngine.Random.Range(-jitterRange, jitterRange);
@@ -143,7 +151,7 @@ public class InstancedObjectPlacer : MonoBehaviour
         }
     }
 
-    // =================== Рендеринг ===================
+    // =================== Отрисовка ===================
 
     void Update()
     {
@@ -151,7 +159,7 @@ public class InstancedObjectPlacer : MonoBehaviour
         DrawAll();
     }
 
-    // DrawMeshInstanced принимает максимум 1023 матриц за вызов
+    // DrawMeshInstanced рисует максимум 1023 матрицы за вызов
     private const int BatchSize = 1023;
 
     private void DrawAll()
@@ -197,14 +205,14 @@ public class InstancedObjectPlacer : MonoBehaviour
         }
         if (terrainBuilder == null)
         {
-            Debug.LogError("InstancedObjectPlacer: нужен ChunkedTerrainBuilder!");
+            Debug.LogError("InstancedObjectPlacer: нет ChunkedTerrainBuilder!");
             return false;
         }
         return true;
     }
 
     /// <summary>
-    /// Возвращает центр клетки в мировых координатах (удобно для NPC и путей).
+    /// Возвращает центр ячейки в мировых координатах (удобно для NPC и логики).
     /// </summary>
     public Vector3 GetCellCenter(int x, int z)
     {
@@ -222,7 +230,7 @@ public class InstancedObjectPlacer : MonoBehaviour
     }
 
     /// <summary>
-    /// Возвращает индекс клетки по мировой позиции.
+    /// Возвращает индекс ячейки по мировой позиции.
     /// </summary>
     public Vector2Int WorldToCell(Vector3 worldPos)
     {
@@ -246,7 +254,7 @@ public class InstancedObjectPlacer : MonoBehaviour
         int d = heightSource.depth;
         Vector3 origin = new Vector3(-w * ts / 2f, 0, -d * ts / 2f);
 
-        // Рисуем сетку клеток (только в небольшом радиусе от камеры)
+        // Рисуем сетку ячеек (ограниченно, чтобы не подвесить редактор)
         Gizmos.color = new Color(1, 1, 0, 0.15f);
         int limit = Mathf.Min(w, 30);
         int limitD = Mathf.Min(d, 30);

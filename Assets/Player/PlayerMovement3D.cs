@@ -59,6 +59,10 @@ public class PlayerMovement3D : MonoBehaviour
     public float rotationSpeed = 15f;
     public float gravity = -20f;
 
+    [Header("Граница карты (опционально)")]
+    [Tooltip("Если не задана — берётся MapBoundary с этого же объекта.")]
+    public MapBoundary boundary;
+
     // Компоненты
     private CharacterController _controller;
     private Camera _mainCamera;
@@ -88,6 +92,8 @@ public class PlayerMovement3D : MonoBehaviour
         _controller = GetComponent<CharacterController>();
         _mainCamera = Camera.main;
         _currentGait = walk;
+
+        if (boundary == null) boundary = GetComponent<MapBoundary>();
     }
 
     void Update()
@@ -103,6 +109,20 @@ public class PlayerMovement3D : MonoBehaviour
         HandleGait();
         HandleMovement();
         ApplyGravity();
+    }
+
+    // ──────────────────────────────────────────────
+    // Перемещение через границу карты
+    // ──────────────────────────────────────────────
+
+    // Все горизонтальные перемещения идут сюда: граница гасит движение
+    // наружу в приграничной полосе и не пускает за край (в т.ч. перекатом).
+    void MoveHorizontal(Vector3 delta)
+    {
+        if (boundary != null && boundary.IsReady)
+            delta = boundary.Constrain(transform.position, delta);
+
+        _controller.Move(delta);
     }
 
     // ──────────────────────────────────────────────
@@ -134,7 +154,7 @@ public class PlayerMovement3D : MonoBehaviour
             return;
         }
 
-        _controller.Move(_maneuverDir * _maneuverSpeed * Time.deltaTime);
+        MoveHorizontal(_maneuverDir * _maneuverSpeed * Time.deltaTime);
     }
 
     void StartManeuver(float speed, float duration, ref bool flag, ref float lastTime)
@@ -198,7 +218,7 @@ public class PlayerMovement3D : MonoBehaviour
                 targetVelocity,
                 _currentGait.acceleration * Time.deltaTime);
 
-            _controller.Move(_velocity * Time.deltaTime);
+            MoveHorizontal(_velocity * Time.deltaTime);
             HandleRotation();
         }
         else
@@ -212,7 +232,7 @@ public class PlayerMovement3D : MonoBehaviour
                     _velocity,
                     Vector3.zero,
                     _currentGait.deceleration * Time.deltaTime);
-                _controller.Move(_velocity * Time.deltaTime);
+                MoveHorizontal(_velocity * Time.deltaTime);
             }
             else
             {
