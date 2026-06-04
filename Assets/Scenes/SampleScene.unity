@@ -142,6 +142,7 @@ GameObject:
   - component: {fileID: 81622711}
   - component: {fileID: 81622712}
   - component: {fileID: 81622713}
+  - component: {fileID: 81622714}
   m_Layer: 6
   m_Name: Player
   m_TagString: Player
@@ -223,14 +224,14 @@ MonoBehaviour:
     stepDuration: 0.4
     stepFrequency: 2
   run:
-    speed: 12
+    speed: 10
     acceleration: 18
     deceleration: 14
     stepDistance: 1.5
     stepDuration: 0.2
     stepFrequency: 3
   sprint:
-    speed: 17
+    speed: 15
     acceleration: 12
     deceleration: 6
     stepDistance: 2
@@ -541,6 +542,32 @@ MonoBehaviour:
   useManualBounds: 0
   manualHalfWidth: 100
   manualHalfDepth: 100
+--- !u!114 &81622714
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 81622701}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 85219835ffc819e42becf3e63a3c6950, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  castKey: 101
+  resources: {fileID: 0}
+  castCost: 15
+  drainPerSecond: 3
+  attachTo: {fileID: 0}
+  localOffset: {x: 0, y: 1.5, z: 0}
+  lightColor: {r: 0.7, g: 0.85, b: 1, a: 1}
+  intensity: 10
+  range: 14
+  shadows: 2
+  fadeTime: 0.25
+  flicker: 1
+  flickerAmount: 0.12
+  flickerSpeed: 9
 --- !u!1 &330585543
 GameObject:
   m_ObjectHideFlags: 0
@@ -698,6 +725,12 @@ MonoBehaviour:
   fixedRotation: {x: 45, y: 45, z: 0}
   isOrthographic: 1
   orthographicSize: 15
+  enableZoom: 1
+  minZoom: 10
+  maxZoom: 22
+  zoomSpeed: 4
+  zoomSmoothTime: 0.12
+  invertZoom: 0
   mapBounds:
     m_Center: {x: 0, y: 0, z: 0}
     m_Extent: {x: 0, y: 0, z: 0}
@@ -882,6 +915,7 @@ GameObject:
   - component: {fileID: 1224455445}
   - component: {fileID: 1224455444}
   - component: {fileID: 1224455448}
+  - component: {fileID: 1224455449}
   m_Layer: 0
   m_Name: Alfa
   m_TagString: Untagged
@@ -905,13 +939,32 @@ MonoBehaviour:
   acceleration: 20
   deceleration: 25
   slowdownDistance: 2.5
-  boundSpeedThreshold: 6
-  boundReferenceSpeed: 12
+  trot:
+    speed: 3.5
+    acceleration: 0
+    deceleration: 0
+    stepDistance: 0.4
+    stepDuration: 0.28
+    stepFrequency: 2.6
+  gallop:
+    speed: 9
+    acceleration: 0
+    deceleration: 0
+    stepDistance: 0.9
+    stepDuration: 0.18
+    stepFrequency: 3.6
+  boundEnterSpeed: 9
+  boundExitSpeed: 6.5
+  boundChargeTime: 0.25
+  boundTakeoffBoost: 1.2
+  maxBoundSpeed: 14
+  boundGroundTime: 0.08
   minBoundHeight: 0.5
   maxBoundHeight: 1.4
-  boundGroundTime: 0.08
+  boundReferenceSpeed: 12
   obstacleLeapHeight: 1.6
   obstacleProbe: 0.6
+  obstacleMinSpeed: 6
   gravity: -20
   rotationSpeed: 6
   arriveThreshold: 1.5
@@ -934,6 +987,12 @@ MonoBehaviour:
   player: {fileID: 81622707}
   playerTag: Player
   viewAngleThreshold: 60
+  sightBlockers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  selfEyeOffset: {x: 0, y: 1, z: 0}
+  playerEyeOffset: {x: 0, y: 1.2, z: 0}
+  playerSightRange: 35
 --- !u!114 &1224455446
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -941,7 +1000,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1224455443}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4e1dde2c9bfcc2f4eb2a334d37e20adc, type: 3}
   m_Name: 
@@ -967,7 +1026,7 @@ Transform:
   m_GameObject: {fileID: 1224455443}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 15, y: 5, z: 15}
+  m_LocalPosition: {x: 45, y: 5, z: 45}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -1000,6 +1059,34 @@ CharacterController:
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
   m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &1224455449
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1224455443}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4582e7a2b9c2cc94b85d968f1f0b0774, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  perception: {fileID: 1224455445}
+  locomotion: {fileID: 1224455444}
+  noticeRange: 30
+  loseInterestRange: 45
+  preferredStalkDistance: 16
+  spookRadius: 8
+  spookApproachMargin: 3
+  stalkSpeed: 4
+  fleeSpeed: 12
+  patrolSpeed: 2.5
+  faceWhileFrozen: 0
+  repositionDistance: 28
+  repositionSpread: 35
+  patrolRadius: 20
+  pressurePerSecond: 0.15
+  autoCallWhenPressured: 0
 --- !u!1001 &1503588177
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1452,14 +1539,14 @@ MonoBehaviour:
   chunkedBuilder: {fileID: 1950520777}
   seamlessBuilder: {fileID: 1950520776}
   curtainHeight: 6
-  curtainThickness: 10
-  inset: 2
+  curtainThickness: 20
+  inset: -7
   baseY: -1
   fogColor: {r: 0.88, g: 0.9, b: 0.94, a: 1}
   maxAlpha: 0.5
   particleSize: 12
   particleLifetime: 6
-  particlesPerMeter: 0.12
+  particlesPerMeter: 0.25
   upwardDrift: 0.15
   turbulence: 0.4
   fogMaterial: {fileID: 10308, guid: 0000000000000000f000000000000000, type: 0}

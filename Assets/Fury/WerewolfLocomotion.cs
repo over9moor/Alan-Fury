@@ -1,15 +1,15 @@
 ﻿using UnityEngine;
 
 /// <summary>
-/// Движение оборотня через CharacterController.
-/// Походка выбирается автоматически:
-///  - ниже boundSpeedThreshold — бег шагами по земле;
-///  - выше — прыжки-скачки (чем быстрее, тем выше и длиннее дуга);
+/// Движение оборотня через CharacterController. Лестница аллюров:
+///  - низ/середина — бег по земле с импульсом шага (StepController), как у игрока;
+///  - верх — скачки: включаются только после разбега (скорость ≥ boundEnterSpeed,
+///    удержанная boundChargeTime), чейнятся с переносом импульса и за счёт
+///    boundTakeoffBoost дают БОЛЬШЕ метров в секунду, чем бег — самый быстрый аллюр;
 ///  - упор в рельеф впереди — перепрыгивание препятствия.
 ///
-/// Мозг лишь говорит «беги к точке с такой скоростью» (MoveTo),
-/// а скачки — следствие скорости, поэтому WerewolfBrain не зависит
-/// от способа передвижения.
+/// Мозг лишь говорит «беги к точке с такой скоростью» (MoveTo), а выбор аллюра —
+/// следствие фактической скорости, поэтому WerewolfBrain от этого не зависит.
 /// </summary>
 [RequireComponent(typeof(CharacterController))]
 public class WerewolfLocomotion : MonoBehaviour
@@ -17,26 +17,54 @@ public class WerewolfLocomotion : MonoBehaviour
     [Header("Граница карты (опционально)")]
     public MapBoundary boundary;
 
-    [Header("Бег (шаги)")]
+    [Header("Разгон/торможение")]
     public float acceleration = 18f;
     public float deceleration = 22f;
     [Tooltip("На какой дистанции до цели начинать тормозить (м).")]
     public float slowdownDistance = 2.5f;
 
-    [Header("Скачки (на скорости)")]
-    [Tooltip("Выше этой горизонтальной скорости бег переходит в скачки (м/с).")]
-    public float boundSpeedThreshold = 6f;
-    [Tooltip("Скорость, при которой скачок максимально высокий/длинный (м/с).")]
-    public float boundReferenceSpeed = 12f;
+    [Header("Наземная походка (шаги)")]
+    [Tooltip("У этих гейтов важны только speed/stepDistance/stepDuration/stepFrequency. " +
+             "acceleration/deceleration НЕ используются — разгон берётся из полей выше.")]
+    public GaitConfig trot = new GaitConfig
+    {
+        speed = 3.5f,
+        stepDistance = 0.4f,
+        stepDuration = 0.28f,
+        stepFrequency = 2.6f
+    };
+    public GaitConfig gallop = new GaitConfig
+    {
+        speed = 9f,
+        stepDistance = 0.9f,
+        stepDuration = 0.18f,
+        stepFrequency = 3.6f
+    };
+
+    [Header("Скачки — верхний аллюр (самый быстрый)")]
+    [Tooltip("Скорость, выше которой (удержав boundChargeTime) бег переходит в скачки (м/с).")]
+    public float boundEnterSpeed = 9f;
+    [Tooltip("Опускаемся ниже — скачки прекращаются (гистерезис, м/с).")]
+    public float boundExitSpeed = 6.5f;
+    [Tooltip("Сколько надо держать высокую скорость на земле перед первым скачком (сек).")]
+    public float boundChargeTime = 0.25f;
+    [Tooltip("Множитель горизонт. импульса на отталкивании — делает скачок дальше бега.")]
+    public float boundTakeoffBoost = 1.2f;
+    [Tooltip("Потолок горизонтальной скорости в скачках (м/с).")]
+    public float maxBoundSpeed = 14f;
+    [Tooltip("Контакт с землёй между скачками (сек). Мал = слитный галоп, велик = отдельные прыжки.")]
+    public float boundGroundTime = 0.08f;
     public float minBoundHeight = 0.5f;
     public float maxBoundHeight = 1.4f;
-    [Tooltip("Контакт с землёй между скачками (сек). Мал = галоп, велик = отдельные прыжки.")]
-    public float boundGroundTime = 0.08f;
+    [Tooltip("Скорость, при которой скачок максимально высокий/длинный (м/с).")]
+    public float boundReferenceSpeed = 12f;
 
     [Header("Перепрыгивание рельефа")]
     public float obstacleLeapHeight = 1.6f;
     [Tooltip("Дальность проверки препятствия впереди (м).")]
     public float obstacleProbe = 0.6f;
+    [Tooltip("Минимальный горизонт. импульс при перепрыгивании препятствия (м/с).")]
+    public float obstacleMinSpeed = 6f;
 
     [Header("Гравитация")]
     public float gravity = -20f;
@@ -54,9 +82,14 @@ public class WerewolfLocomotion : MonoBehaviour
     private CharacterController _cc;
     private Vector3 _horizVel;
     private float _vertVel;
-    private bool _leaping;
-    private float _groundTimer;
+    private bool _leaping;        // сейчас в воздухе (скачок/бросок)
+    private bool _bounding;       // режим галоп-скачков (поверх _leaping)
+    private float _chargeTimer;   // накопленное время высокой скорости на земле
+    private float _groundTimer;   // контакт с землёй с момента приземления
+    private float _stepImpulse;   // импульс шага в этом кадре (наземная походка)
     private bool _placed;
+
+    private readonly StepController _step = new StepController();
 
     private int _moveFrame = -1;
     private Vector3 _moveTarget;
@@ -64,7 +97,9 @@ public class WerewolfLocomotion : MonoBehaviour
 
     public bool IsGrounded => _cc != null && _cc.isGrounded;
     public bool IsLeaping => _leaping;
+    public bool IsBounding => _bounding;
     public float CurrentSpeed => _horizVel.magnitude;
+    public float StepCurve => _step.Curve;   // для боба/анимации/звука
 
     void Awake() => _cc = GetComponent<CharacterController>();
     void Start() { if (boundary == null) boundary = GetComponent<MapBoundary>(); }
@@ -96,6 +131,7 @@ public class WerewolfLocomotion : MonoBehaviour
         _horizVel = dir * (airTime > 0.0001f ? dist / airTime : 0f);
         _vertVel = vUp;
         _leaping = true; _groundTimer = 0f;
+        _step.Cancel();
     }
 
     /// <summary>Вертикальный прыжок на месте.</summary>
@@ -123,6 +159,7 @@ public class WerewolfLocomotion : MonoBehaviour
         bool active = _moveFrame == Time.frameCount;
         Vector3 pos = transform.position;
 
+        _stepImpulse = 0f;
         if (_cc.isGrounded) _groundTimer += dt;
 
         if (_leaping)
@@ -131,7 +168,7 @@ public class WerewolfLocomotion : MonoBehaviour
         }
         else
         {
-            // Горизонтальная скорость с разгоном/торможением
+            // --- Горизонтальная скорость: разгон/торможение ---
             if (active)
             {
                 Vector3 to = _moveTarget - pos; to.y = 0f;
@@ -149,18 +186,38 @@ public class WerewolfLocomotion : MonoBehaviour
                 _horizVel = Vector3.MoveTowards(_horizVel, Vector3.zero, deceleration * dt);
             }
 
-            // Походка: шаги или скачок
-            if (_cc.isGrounded && _groundTimer >= boundGroundTime)
+            float spd = _horizVel.magnitude;
+
+            // --- Заряд скачка + гистерезис ---
+            if (_cc.isGrounded && spd >= boundEnterSpeed) _chargeTimer += dt;
+            else if (spd < boundEnterSpeed) _chargeTimer = 0f;
+            if (_bounding && spd < boundExitSpeed) _bounding = false;
+
+            // --- Выбор аллюра на очередном такте контакта с землёй ---
+            bool beat = _cc.isGrounded && _groundTimer >= boundGroundTime;
+
+            if (beat && active && ObstacleAhead())
             {
-                float spd = _horizVel.magnitude;
-                if (active && ObstacleAhead())
-                    StartBound(obstacleLeapHeight, boundSpeedThreshold); // перепрыгнуть рельеф
-                else if (spd > boundSpeedThreshold)
-                    StartBound(BoundHeightForSpeed(spd), 0f);            // скачок на скорости
+                StartBound(obstacleLeapHeight, obstacleMinSpeed, false);   // перепрыгнуть рельеф
+            }
+            else if (beat && (_bounding || _chargeTimer >= boundChargeTime) && spd >= boundExitSpeed)
+            {
+                _bounding = true;
+                StartBound(BoundHeightForSpeed(spd), 0f, true);            // галоп-скачок (верхний аллюр)
+            }
+            else if (active && spd > 0.1f)
+            {
+                // Наземная походка с импульсом шага (как у игрока)
+                _step.TryStart(spd, trot, gallop);
+                _stepImpulse = _step.Tick(dt);
+            }
+            else
+            {
+                _step.Cancel();
             }
         }
 
-        // Гравитация
+        // --- Гравитация ---
         if (_cc.isGrounded && _vertVel <= 0f)
         {
             if (_leaping) { _leaping = false; _groundTimer = 0f; } // приземлились, импульс сохраняем
@@ -168,28 +225,35 @@ public class WerewolfLocomotion : MonoBehaviour
         }
         else _vertVel += gravity * dt;
 
-        // Движение: горизонталь через границу карты + вертикаль
-        Vector3 horiz = _horizVel * dt; horiz.y = 0f;
+        // --- Движение: горизонталь (+ импульс шага) через границу карты + вертикаль ---
+        Vector3 stepVec = (_stepImpulse != 0f && _horizVel.sqrMagnitude > 0.0001f)
+            ? _horizVel.normalized * _stepImpulse
+            : Vector3.zero;
+
+        Vector3 horiz = (_horizVel + stepVec) * dt; horiz.y = 0f;
         if (boundary != null && boundary.IsReady) horiz = boundary.Constrain(pos, horiz);
         _cc.Move(horiz + Vector3.up * (_vertVel * dt));
     }
 
     // =================== helpers ===================
 
-    private void StartBound(float height, float minHorizontalSpeed)
+    private void StartBound(float height, float minHorizontalSpeed, bool boost)
     {
         Vector3 dir = _horizVel.sqrMagnitude > 0.0001f ? _horizVel.normalized : transform.forward;
         float spd = Mathf.Max(_horizVel.magnitude, minHorizontalSpeed);
         if (spd < 0.01f) return;
 
+        if (boost) spd = Mathf.Min(spd * boundTakeoffBoost, maxBoundSpeed); // взрывное отталкивание
+
         _horizVel = dir * spd;                 // сохраняем/задаём горизонтальный импульс
         _vertVel = Mathf.Sqrt(2f * -gravity * height);
         _leaping = true; _groundTimer = 0f;
+        _step.Cancel();
     }
 
     private float BoundHeightForSpeed(float spd)
     {
-        float t = Mathf.InverseLerp(boundSpeedThreshold, boundReferenceSpeed, spd);
+        float t = Mathf.InverseLerp(boundExitSpeed, boundReferenceSpeed, spd);
         return Mathf.Lerp(minBoundHeight, maxBoundHeight, t);
     }
 
