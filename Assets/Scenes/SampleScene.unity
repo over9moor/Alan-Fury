@@ -1073,18 +1073,18 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   perception: {fileID: 1224455445}
   locomotion: {fileID: 1224455444}
-  noticeRange: 30
-  loseInterestRange: 45
-  preferredStalkDistance: 16
-  spookRadius: 8
-  spookApproachMargin: 3
-  stalkSpeed: 4
+  shadowDistance: 30
+  minDistance: 25
+  spookRadius: 20
+  spookApproachMargin: 5
+  flankBias: 50
+  orbitStepAngle: 35
+  holdBand: 3.5
+  creepSpeed: 4
+  approachSpeed: 12
   fleeSpeed: 12
-  patrolSpeed: 2.5
+  speedRampDistance: 8
   faceWhileFrozen: 0
-  repositionDistance: 28
-  repositionSpread: 35
-  patrolRadius: 20
   pressurePerSecond: 0.15
   autoCallWhenPressured: 0
 --- !u!1001 &1503588177
@@ -1281,6 +1281,8 @@ GameObject:
   - component: {fileID: 1950520776}
   - component: {fileID: 1950520778}
   - component: {fileID: 1950520777}
+  - component: {fileID: 1950520779}
+  - component: {fileID: 1950520780}
   m_Layer: 0
   m_Name: Terrain
   m_TagString: Untagged
@@ -1319,7 +1321,7 @@ MonoBehaviour:
   - name: Tree
     prefab: {fileID: 7434248268450739963, guid: 3abe6a6fa5402984eb939942a4aa94cb,
       type: 3}
-    count: 27
+    count: 150
     minHeight: 0
     maxHeight: 5
     randomRotation: 0
@@ -1328,7 +1330,7 @@ MonoBehaviour:
     alignToSurface: 0
     heightOffset: 0
     spawnChance: 10
-    minDistanceBetweenObjects: 1
+    minDistanceBetweenObjects: 3
   objectsParent: {fileID: 0}
   maxAttemptsPerObject: 30
   useSpacialGrid: 1
@@ -1352,6 +1354,7 @@ MonoBehaviour:
   instancedObjectPlacer: {fileID: 0}
   zoneSystem: {fileID: 1950520773}
   fogCurtain: {fileID: 1950520778}
+  fogPlacer: {fileID: 0}
   generateOnStart: 1
   clearBeforeGenerate: 1
   logTimings: 1
@@ -1549,7 +1552,51 @@ MonoBehaviour:
   particlesPerMeter: 0.25
   upwardDrift: 0.15
   turbulence: 0.4
-  fogMaterial: {fileID: 10308, guid: 0000000000000000f000000000000000, type: 0}
+  fogMaterial: {fileID: 2100000, guid: 0c816c67bd1508549a09f35e219ee195, type: 2}
+--- !u!114 &1950520779
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1950520764}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b2d648b5350878149a9151a7237cf9ce, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  player: {fileID: 81622707}
+  playerTag: Player
+  maxActive: 5
+  cullInterval: 0.4
+--- !u!114 &1950520780
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1950520764}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 227ae643b9b797a409ed9bb0a9c2e6c4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  heightSource: {fileID: 1950520771}
+  terrainBuilder: {fileID: 1950520777}
+  fogPrefab: {fileID: 418428478413586072, guid: fbae3b70433cbfc4695fa02948a8032b,
+    type: 3}
+  parent: {fileID: 0}
+  count: 150
+  minDistanceBetween: 15
+  edgeMargin: 12
+  heightOffset: 3
+  raycastToGround: 1
+  groundLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  randomSeed: 1
+  seed: 1337
+  maxAttemptsPerObject: 30
 --- !u!4 &2057484379 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 0be3360d1aa2ca04880b03e0d21c146d,

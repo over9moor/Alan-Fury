@@ -103,13 +103,20 @@ public class WerewolfPerception : MonoBehaviour
 
     /// <summary>
     /// Видит ли игрок оборотня прямо сейчас:
-    /// в пределах дальности + в конусе обзора + не перекрыт укрытием.
+    /// в пределах дальности + в конусе обзора + не перекрыт укрытием + не спрятан в тумане.
     /// </summary>
     public bool IsSeenByPlayer()
     {
         if (player == null) return false;
         if (DistanceToPlayer > playerSightRange) return false;
         if (!PlayerLookingAtMe) return false;
-        return HasLineOfSightToPlayer();
+        if (!HasLineOfSightToPlayer()) return false;
+
+        // Прячемся в тумане: оборотень в очаге, куда игрок не зашёл → не виден.
+        if (FogManager.Instance != null &&
+            FogManager.Instance.IsConcealed(transform.position, player.position))
+            return false;
+
+        return true;
     }
 }

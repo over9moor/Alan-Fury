@@ -22,6 +22,7 @@ public class TerrainManager : MonoBehaviour
     [Header("Опциональные системы")]
     public TerrainZoneSystem zoneSystem;
     public MapFogCurtain fogCurtain;                    // туман-занавес по краям карты
+    public FogPlacer fogPlacer;                         // очаги тумана на карте
 
     [Header("Настройки запуска")]
     public bool generateOnStart = true;
@@ -110,6 +111,13 @@ public class TerrainManager : MonoBehaviour
             LogStep("Туман-занавес", ref sw);
         }
 
+        // 6. Очаги тумана на карте
+        if (fogPlacer != null)
+        {
+            fogPlacer.PlaceFog();
+            LogStep("Очаги тумана", ref sw);
+        }
+
         Debug.Log("=== Генерация завершена! ===");
     }
 
@@ -123,6 +131,7 @@ public class TerrainManager : MonoBehaviour
         if (heightGenerator != null) heightGenerator.Clear();
         if (zoneSystem != null) zoneSystem.ClearZones();
         if (fogCurtain != null) fogCurtain.ClearCurtain();
+        if (fogPlacer != null) fogPlacer.ClearFog();
     }
 
     private void LogStep(string name, ref System.Diagnostics.Stopwatch sw)
@@ -142,6 +151,7 @@ public class TerrainManager : MonoBehaviour
         if (instancedObjectPlacer == null) instancedObjectPlacer = GetComponent<InstancedObjectPlacer>();
         if (zoneSystem == null) zoneSystem = GetComponent<TerrainZoneSystem>();
         if (fogCurtain == null) fogCurtain = GetComponent<MapFogCurtain>();
+        if (fogPlacer == null) fogPlacer = GetComponent<FogPlacer>();
     }
 
     private bool ValidateComponents()
