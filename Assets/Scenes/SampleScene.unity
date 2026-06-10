@@ -1279,10 +1279,10 @@ GameObject:
   - component: {fileID: 1950520765}
   - component: {fileID: 1950520773}
   - component: {fileID: 1950520776}
-  - component: {fileID: 1950520778}
   - component: {fileID: 1950520777}
   - component: {fileID: 1950520779}
   - component: {fileID: 1950520780}
+  - component: {fileID: 1950520781}
   m_Layer: 0
   m_Name: Terrain
   m_TagString: Untagged
@@ -1353,7 +1353,7 @@ MonoBehaviour:
   objectPlacer: {fileID: 1950520765}
   instancedObjectPlacer: {fileID: 0}
   zoneSystem: {fileID: 1950520773}
-  fogCurtain: {fileID: 1950520778}
+  fogCurtain: {fileID: 0}
   fogPlacer: {fileID: 0}
   generateOnStart: 1
   clearBeforeGenerate: 1
@@ -1526,33 +1526,6 @@ MonoBehaviour:
   highColor: {r: 0.9, g: 0.9, b: 0.9, a: 1}
   foundationColor: {r: 0.2, g: 0.15, b: 0.1, a: 1}
   terrainMaterial: {fileID: 2100000, guid: b0fffd1b66a6e1945ab30e915af3cf53, type: 2}
---- !u!114 &1950520778
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1950520764}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4811dfa6797b34e4a963dc134015ff0e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  heightSource: {fileID: 1950520771}
-  chunkedBuilder: {fileID: 1950520777}
-  seamlessBuilder: {fileID: 1950520776}
-  curtainHeight: 6
-  curtainThickness: 20
-  inset: -7
-  baseY: -1
-  fogColor: {r: 0.88, g: 0.9, b: 0.94, a: 1}
-  maxAlpha: 0.5
-  particleSize: 12
-  particleLifetime: 6
-  particlesPerMeter: 0.25
-  upwardDrift: 0.15
-  turbulence: 0.4
-  fogMaterial: {fileID: 2100000, guid: 0c816c67bd1508549a09f35e219ee195, type: 2}
 --- !u!114 &1950520779
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1567,7 +1540,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   player: {fileID: 81622707}
   playerTag: Player
-  maxActive: 5
+  maxActive: 45
   cullInterval: 0.4
 --- !u!114 &1950520780
 MonoBehaviour:
@@ -1597,6 +1570,28 @@ MonoBehaviour:
   randomSeed: 1
   seed: 1337
   maxAttemptsPerObject: 30
+--- !u!114 &1950520781
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1950520764}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4811dfa6797b34e4a963dc134015ff0e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  heightSource: {fileID: 1950520771}
+  chunkedBuilder: {fileID: 1950520777}
+  seamlessBuilder: {fileID: 1950520776}
+  fogPrefab: {fileID: 418428478413586072, guid: 04ff3010d7b80b9448f16a1a4e74ed5c,
+    type: 3}
+  parent: {fileID: 0}
+  spacing: 18
+  inset: 0
+  heightOffset: 0
+  jitterFraction: 0.25
 --- !u!4 &2057484379 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 0be3360d1aa2ca04880b03e0d21c146d,
