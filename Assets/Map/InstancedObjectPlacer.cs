@@ -3,17 +3,19 @@ using UnityEngine.Rendering;
 using System.Collections.Generic;
 
 /// <summary>
-/// Размещает объекты через GPU Instancing в один draw call на тип объекта
-/// вместо создания отдельного GameObject на каждый экземпляр.
+/// Размещает объекты через GPU Instancing — один draw call на батч
+/// вместо тысяч GameObject'ов со своими компонентами.
 ///
-/// Отличия от ObjectPlacer:
-/// - хранит трансформы экземпляров в виде матриц (нет реальных объектов в сцене)
-/// - один тип = один вызов DrawMeshInstanced пачками (макс. 1023 за вызов)
-/// - нет GameObject'ов = нет overhead на Transform/Renderer компоненты
+/// Отличие от ObjectPlacer:
+/// - вместо инстансов хранятся только матрицы (позиция/поворот/масштаб)
+/// - один тип = пачка DrawMeshInstanced вызовов (макс. 1023 за вызов)
+/// - нет GameObject'ов = нет overhead'а на Transform/Renderer
 ///
-/// Минус: объекты не участвуют в физике и не имеют коллайдеров.
-/// Для интерактивных объектов используйте ObjectPlacer (деревья, камни),
-/// а тут — фон (трава, мелкие детали).
+/// Важно: объекты не реальные в сцене — у них нет коллайдеров.
+/// Для интерактивных объектов используй ObjectPlacer (постройки, камни),
+/// а этот — для массовки (трава, мелкие деревья).
+///
+/// Батчи нарезаются ОДИН РАЗ при генерации (без аллокаций в Update).
 /// </summary>
 public class InstancedObjectPlacer : MonoBehaviour
 {
@@ -26,18 +28,18 @@ public class InstancedObjectPlacer : MonoBehaviour
         public int subMeshIndex = 0;
 
         [Header("Плотность")]
-        [Tooltip("Каждые сколько ячеек ставить один объект (1 = один объект на ячейку)")]
+        [Tooltip("Сколько клеток сетки занимает один объект (1 = шанс в каждой клетке)")]
         public int cellsPerObject = 1;
-        [Tooltip("Чем больше — тем плотнее засев (0..1)")]
+        [Tooltip("Шанс спавна в подходящей клетке (0..1)")]
         [Range(0f, 1f)] public float density = 0.3f;
         public float minHeight = 0f;
         public float maxHeight = 1f;
 
-        [Header("Смещение в пределах ячейки")]
-        [Tooltip("Разброс позиции внутри ячейки (0 = строго в центре)")]
+        [Header("Смещение внутри клетки")]
+        [Tooltip("Разброс позиции внутри клетки (0 = строго в центре)")]
         [Range(0f, 0.5f)] public float cellJitter = 0.3f;
 
-        [Header("Трансформ")]
+        [Header("Внешность")]
         public bool randomRotationY = true;
         public float minScale = 0.8f;
         public float maxScale = 1.2f;
@@ -49,6 +51,7 @@ public class InstancedObjectPlacer : MonoBehaviour
 
         // Данные для отрисовки (заполняются при генерации)
         [HideInInspector] public List<Matrix4x4> matrices = new List<Matrix4x4>();
+        [HideInInspector] public List<Matrix4x4[]> batches = new List<Matrix4x4[]>();
         [HideInInspector] public MaterialPropertyBlock propertyBlock;
     }
 
@@ -65,8 +68,8 @@ public class InstancedObjectPlacer : MonoBehaviour
     public bool randomSeed = true;
     public int seed = 42;
 
-    [Header("Отступ от края (в ячейках)")]
-    [Tooltip("Не спавнить объекты в приграничной полосе. ~совпадает с толщиной тумана при tileSize=4.")]
+    [Header("Отступ от края (в клетках)")]
+    [Tooltip("Не спавнить объекты в приграничных клетках. ~Совпадает с границей карты при tileSize=4.")]
     public int borderCells = 2;
 
     private bool isGenerated = false;
@@ -88,6 +91,7 @@ public class InstancedObjectPlacer : MonoBehaviour
         foreach (var objType in objectTypes)
         {
             objType.matrices.Clear();
+            objType.batches.Clear();
             objType.propertyBlock = new MaterialPropertyBlock();
 
             if (objType.mesh == null || objType.material == null)
@@ -97,7 +101,8 @@ public class InstancedObjectPlacer : MonoBehaviour
             }
 
             PlaceType(objType, w, d, ts, origin);
-            Debug.Log($"InstancedObjectPlacer: '{objType.name}' — {objType.matrices.Count} экземпляров");
+            BuildBatches(objType);
+            Debug.Log($"InstancedObjectPlacer: '{objType.name}' — {objType.matrices.Count} инстансов, {objType.batches.Count} батчей");
         }
 
         isGenerated = true;
@@ -106,7 +111,10 @@ public class InstancedObjectPlacer : MonoBehaviour
     public void ClearObjects()
     {
         foreach (var t in objectTypes)
+        {
             t.matrices.Clear();
+            t.batches.Clear();
+        }
         isGenerated = false;
     }
 
@@ -114,14 +122,14 @@ public class InstancedObjectPlacer : MonoBehaviour
 
     private void PlaceType(InstancedObjectType objType, int w, int d, float ts, Vector3 origin)
     {
-        // Проходим карту с шагом cellsPerObject
+        // Шагаем сеткой с шагом cellsPerObject
         int step = Mathf.Max(1, objType.cellsPerObject);
 
         for (int x = 0; x < w; x += step)
         {
             for (int z = 0; z < d; z += step)
             {
-                // Не спавнить в приграничной полосе (прячется под туман)
+                // Не спавнить в приграничных клетках (граница без леса)
                 if (x < borderCells || x >= w - borderCells || z < borderCells || z >= d - borderCells)
                     continue;
 
@@ -131,7 +139,7 @@ public class InstancedObjectPlacer : MonoBehaviour
                 float h = heightSource.GetHeight(x, z);
                 if (h < objType.minHeight || h > objType.maxHeight) continue;
 
-                // Центр ячейки + случайный jitter
+                // Центр клетки + случайный jitter
                 float jitterRange = ts * objType.cellJitter;
                 float px = origin.x + x * ts + ts * 0.5f + UnityEngine.Random.Range(-jitterRange, jitterRange);
                 float pz = origin.z + z * ts + ts * 0.5f + UnityEngine.Random.Range(-jitterRange, jitterRange);
@@ -151,6 +159,22 @@ public class InstancedObjectPlacer : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Нарезает matrices на готовые массивы-батчи один раз.
+    /// В Update больше нет аллокаций.
+    /// </summary>
+    private void BuildBatches(InstancedObjectType objType)
+    {
+        int total = objType.matrices.Count;
+        for (int i = 0; i < total; i += BatchSize)
+        {
+            int count = Mathf.Min(BatchSize, total - i);
+            var batch = new Matrix4x4[count];
+            objType.matrices.CopyTo(i, batch, 0, count);
+            objType.batches.Add(batch);
+        }
+    }
+
     // =================== Отрисовка ===================
 
     void Update()
@@ -167,25 +191,17 @@ public class InstancedObjectPlacer : MonoBehaviour
         foreach (var objType in objectTypes)
         {
             if (objType.mesh == null || objType.material == null) continue;
-            if (objType.matrices.Count == 0) continue;
 
-            var matrices = objType.matrices;
-            int total = matrices.Count;
-
-            for (int i = 0; i < total; i += BatchSize)
+            var batches = objType.batches;
+            for (int i = 0; i < batches.Count; i++)
             {
-                int count = Mathf.Min(BatchSize, total - i);
-                var batch = new Matrix4x4[count];
-
-                for (int j = 0; j < count; j++)
-                    batch[j] = matrices[i + j];
-
+                var batch = batches[i];
                 Graphics.DrawMeshInstanced(
                     objType.mesh,
                     objType.subMeshIndex,
                     objType.material,
                     batch,
-                    count,
+                    batch.Length,
                     objType.propertyBlock,
                     objType.shadowCasting,
                     objType.receiveShadows
@@ -194,7 +210,7 @@ public class InstancedObjectPlacer : MonoBehaviour
         }
     }
 
-    // =================== Утилиты ===================
+    // =================== Сервис ===================
 
     private bool Validate()
     {
@@ -212,7 +228,7 @@ public class InstancedObjectPlacer : MonoBehaviour
     }
 
     /// <summary>
-    /// Возвращает центр ячейки в мировых координатах (удобно для NPC и логики).
+    /// Возвращает центр клетки в мировых координатах (полезно для NPC и квестов).
     /// </summary>
     public Vector3 GetCellCenter(int x, int z)
     {
@@ -230,7 +246,7 @@ public class InstancedObjectPlacer : MonoBehaviour
     }
 
     /// <summary>
-    /// Возвращает индекс ячейки по мировой позиции.
+    /// Возвращает индекс клетки по мировой позиции.
     /// </summary>
     public Vector2Int WorldToCell(Vector3 worldPos)
     {
@@ -254,7 +270,6 @@ public class InstancedObjectPlacer : MonoBehaviour
         int d = heightSource.depth;
         Vector3 origin = new Vector3(-w * ts / 2f, 0, -d * ts / 2f);
 
-        // Рисуем сетку ячеек (ограниченно, чтобы не подвесить редактор)
         Gizmos.color = new Color(1, 1, 0, 0.15f);
         int limit = Mathf.Min(w, 30);
         int limitD = Mathf.Min(d, 30);

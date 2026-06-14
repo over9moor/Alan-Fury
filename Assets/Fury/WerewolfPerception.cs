@@ -4,6 +4,10 @@
 /// Восприятие оборотнем игрока. Считает дистанцию, направление,
 /// смотрит ли игрок на оборотня и есть ли между ними прямая видимость.
 /// Только данные — решения принимают мозг/сталкер.
+///
+/// Укрытия: прячут ТОЛЬКО физические преграды (деревья, рельеф) через рейкаст
+/// HasLineOfSightToPlayer по sightBlockers. Туман больше НЕ делает невидимым —
+/// в нём оборотень просто держится (AlphaStalker.BiasToCover).
 /// </summary>
 public class WerewolfPerception : MonoBehaviour
 {
@@ -16,7 +20,7 @@ public class WerewolfPerception : MonoBehaviour
     [Range(0f, 180f)] public float viewAngleThreshold = 35f;
 
     [Header("Линия видимости")]
-    [Tooltip("Слои, перекрывающие обзор: рельеф, объекты-укрытия.")]
+    [Tooltip("Слои, перекрывающие обзор: рельеф, деревья и прочие физические преграды.")]
     public LayerMask sightBlockers = ~0;
     [Tooltip("Точка «глаз» оборотня относительно его origin.")]
     public Vector3 selfEyeOffset = new Vector3(0f, 1.0f, 0f);
@@ -88,7 +92,7 @@ public class WerewolfPerception : MonoBehaviour
         }
     }
 
-    /// <summary>Чистая ли прямая видимость между оборотнем и игроком (нет укрытий).</summary>
+    /// <summary>Чистая ли прямая видимость между оборотнем и игроком (нет физических преград).</summary>
     public bool HasLineOfSightToPlayer()
     {
         if (player == null) return false;
@@ -103,20 +107,14 @@ public class WerewolfPerception : MonoBehaviour
 
     /// <summary>
     /// Видит ли игрок оборотня прямо сейчас:
-    /// в пределах дальности + в конусе обзора + не перекрыт укрытием + не спрятан в тумане.
+    /// в пределах дальности + в конусе обзора + не перекрыт деревом/рельефом.
+    /// Туман на видимость НЕ влияет.
     /// </summary>
     public bool IsSeenByPlayer()
     {
         if (player == null) return false;
         if (DistanceToPlayer > playerSightRange) return false;
         if (!PlayerLookingAtMe) return false;
-        if (!HasLineOfSightToPlayer()) return false;
-
-        // Прячемся в тумане: оборотень в очаге, куда игрок не зашёл → не виден.
-        if (FogManager.Instance != null &&
-            FogManager.Instance.IsConcealed(transform.position, player.position))
-            return false;
-
-        return true;
+        return HasLineOfSightToPlayer();
     }
 }

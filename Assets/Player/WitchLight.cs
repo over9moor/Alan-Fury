@@ -2,11 +2,16 @@ using UnityEngine;
 
 /// <summary>
 /// Заклинание света ("ведьмин огонёк") на клавишу E.
-/// Создаёт точечный источник света на игроке. Тратит ману при касте
-/// и (опционально) расходует ману, пока горит. Повторное E — выключить.
+/// Источник света — сама капсула игрока:
+///  - emission на её материале (видимое свечение тела),
+///  - точечный свет в центре капсулы (освещает окружение; intensity ставь
+///    умеренный, чтобы капсула «подсвечивала», а не была прожектором).
+/// Тратит ману при касте и (опционально) пока горит. Повторное E — выключить.
 /// Гаснет сам, когда мана заканчивается.
 ///
 /// Вешается на объект игрока (рядом с PlayerResources).
+/// ВАЖНО (URP): материал капсулы — URP/Lit с включённым Emission,
+/// иначе SetColor("_EmissionColor") ничего не даст.
 /// </summary>
 public class WitchLight : MonoBehaviour
 {
@@ -21,14 +26,24 @@ public class WitchLight : MonoBehaviour
     [Tooltip("Расход маны в секунду, пока горит. 0 = горит без расхода.")]
     public float drainPerSecond = 3f;
 
-    [Header("Свет")]
-    [Tooltip("Куда крепить огонёк. Пусто = этот объект.")]
+    [Header("Свет (точечный, в центре капсулы)")]
+    [Tooltip("Куда крепить свет. Пусто = этот объект.")]
     public Transform attachTo;
-    public Vector3 localOffset = new Vector3(0f, 1.5f, 0f);
+    [Tooltip("Центр капсулы. Для стандартной капсулы высотой 2 — (0, 1, 0).")]
+    public Vector3 localOffset = new Vector3(0f, 1f, 0f);
     public Color lightColor = new Color(0.7f, 0.85f, 1f);
-    public float intensity = 2.2f;
-    public float range = 14f;
+    [Tooltip("Слабее, чем раньше: капсула подсвечивает, а не заливает всё.")]
+    public float intensity = 1.2f;
+    public float range = 12f;
     public LightShadows shadows = LightShadows.Soft;
+
+    [Header("Свечение капсулы (emission)")]
+    [Tooltip("Renderer капсулы. Пусто → ищется в детях.")]
+    public Renderer glowRenderer;
+    [ColorUsage(false, true)]
+    public Color emissionColor = new Color(0.7f, 0.85f, 1f);
+    [Tooltip("Множитель яркости emission на полной мощности.")]
+    public float emissionIntensity = 2.5f;
 
     [Header("Появление / угасание")]
     [Tooltip("Время плавного включения/выключения (сек).")]
@@ -41,16 +56,22 @@ public class WitchLight : MonoBehaviour
 
     public bool IsOn { get; private set; }
 
+    private static readonly int EmissionColorId = Shader.PropertyToID("_EmissionColor");
+
     private Light _light;
-    private float _current; // текущая яркость для плавного fade
+    private Material _glowMat;   // инстанс материала капсулы
+    private float _current;      // текущая мощность 0..intensity (для плавного fade)
     private float _seed;
 
     void Awake()
     {
         if (resources == null) resources = GetComponent<PlayerResources>();
         if (attachTo == null) attachTo = transform;
+        if (glowRenderer == null) glowRenderer = GetComponentInChildren<Renderer>();
         _seed = Random.value * 100f;
+
         CreateLight();
+        SetupGlowMaterial();
     }
 
     void Update()
@@ -65,7 +86,7 @@ public class WitchLight : MonoBehaviour
                 TurnOff();
         }
 
-        UpdateLightVisual();
+        UpdateVisual();
     }
 
     public void Toggle()
@@ -88,6 +109,8 @@ public class WitchLight : MonoBehaviour
 
     public void TurnOff() => IsOn = false;
 
+    // =================== Внутреннее ===================
+
     private void CreateLight()
     {
         var go = new GameObject("WitchLight");
@@ -103,27 +126,48 @@ public class WitchLight : MonoBehaviour
         _light.enabled = false;
     }
 
-    private void UpdateLightVisual()
+    private void SetupGlowMaterial()
     {
-        if (_light == null) return;
+        if (glowRenderer == null) return;
 
+        // .material → личный инстанс, чужие объекты с тем же материалом не светятся.
+        _glowMat = glowRenderer.material;
+        _glowMat.EnableKeyword("_EMISSION");
+        _glowMat.SetColor(EmissionColorId, Color.black);
+    }
+
+    private void UpdateVisual()
+    {
         float target = IsOn ? intensity : 0f;
         float speed = fadeTime > 0f ? intensity / fadeTime : float.MaxValue;
         _current = Mathf.MoveTowards(_current, target, speed * Time.deltaTime);
 
-        float final = _current;
+        // Общий коэффициент 0..1 + мерцание — синхронно для света и emission.
+        float k = intensity > 0f ? _current / intensity : 0f;
         if (flicker && IsOn)
         {
             float n = Mathf.PerlinNoise(_seed, Time.time * flickerSpeed) * 2f - 1f;
-            final *= 1f + n * flickerAmount;
+            k *= 1f + n * flickerAmount;
+        }
+        k = Mathf.Max(0f, k);
+
+        if (_light != null)
+        {
+            _light.intensity = intensity * k;
+
+            // Выключаем компонент света, когда полностью погас (экономия)
+            if (!IsOn && _current <= 0.001f && _light.enabled)
+                _light.enabled = false;
+            else if (_current > 0f && !_light.enabled)
+                _light.enabled = true;
         }
 
-        _light.intensity = Mathf.Max(0f, final);
+        if (_glowMat != null)
+            _glowMat.SetColor(EmissionColorId, emissionColor * (emissionIntensity * k));
+    }
 
-        // Выключаем компонент света, когда полностью погас (экономия)
-        if (!IsOn && _current <= 0.001f && _light.enabled)
-            _light.enabled = false;
-        else if (_current > 0f && !_light.enabled)
-            _light.enabled = true;
+    void OnDestroy()
+    {
+        if (_glowMat != null) Destroy(_glowMat);
     }
 }

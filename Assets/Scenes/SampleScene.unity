@@ -143,6 +143,7 @@ GameObject:
   - component: {fileID: 81622712}
   - component: {fileID: 81622713}
   - component: {fileID: 81622714}
+  - component: {fileID: 81622715}
   m_Layer: 6
   m_Name: Player
   m_TagString: Player
@@ -281,7 +282,7 @@ Transform:
   m_GameObject: {fileID: 81622701}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 1, y: 5, z: 1}
+  m_LocalPosition: {x: 0.6, y: 5, z: -288.6}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -556,18 +557,37 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   castKey: 101
   resources: {fileID: 0}
-  castCost: 15
-  drainPerSecond: 3
+  castCost: 0
+  drainPerSecond: 0
   attachTo: {fileID: 0}
   localOffset: {x: 0, y: 1.5, z: 0}
   lightColor: {r: 0.7, g: 0.85, b: 1, a: 1}
-  intensity: 10
+  intensity: 30
   range: 14
   shadows: 2
-  fadeTime: 0.25
+  glowRenderer: {fileID: 81622711}
+  emissionColor: {r: 0.7, g: 0.85, b: 1, a: 1}
+  emissionIntensity: 15
+  fadeTime: 0.5
   flicker: 1
   flickerAmount: 0.12
   flickerSpeed: 9
+--- !u!114 &81622715
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 81622701}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 42e28bfc49b07ec4bb6864eeaddb1b32, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  resources: {fileID: 81622704}
+  playerTag: Player
+  fillImage: {fileID: 0}
+  smoothSpeed: 6
 --- !u!1 &330585543
 GameObject:
   m_ObjectHideFlags: 0
@@ -656,7 +676,7 @@ Transform:
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 30, z: 30}
+  m_LocalPosition: {x: 2, y: 30, z: -285}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1073,18 +1093,18 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   perception: {fileID: 1224455445}
   locomotion: {fileID: 1224455444}
-  shadowDistance: 30
   minDistance: 25
-  spookRadius: 20
-  spookApproachMargin: 5
-  flankBias: 50
-  orbitStepAngle: 35
-  holdBand: 3.5
-  creepSpeed: 4
-  approachSpeed: 12
+  maxDistance: 35
+  coverTag: FogPatch
+  coverRadius: 6
+  coverSnapRadius: 8
+  coverArriveRadius: 5
+  holdSeconds: 3
+  stalkSpeed: 4
+  chaseSpeed: 8
   fleeSpeed: 12
-  speedRampDistance: 8
-  faceWhileFrozen: 0
+  repositionDistance: 28
+  repositionSpread: 35
   pressurePerSecond: 0.15
   autoCallWhenPressured: 0
 --- !u!1001 &1503588177
@@ -1283,6 +1303,7 @@ GameObject:
   - component: {fileID: 1950520779}
   - component: {fileID: 1950520780}
   - component: {fileID: 1950520781}
+  - component: {fileID: 1950520782}
   m_Layer: 0
   m_Name: Terrain
   m_TagString: Untagged
@@ -1304,6 +1325,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   heightSource: {fileID: 1950520771}
   terrainBuilder: {fileID: 1950520776}
+  chunkedBuilder: {fileID: 1950520777}
+  zoneSystem: {fileID: 1950520773}
   objectTypes:
   - name: cube
     prefab: {fileID: 7142537620106917095, guid: 1b81ffb1abe63a64e936967afa3b1dd3,
@@ -1315,6 +1338,7 @@ MonoBehaviour:
     minScale: 1
     maxScale: 1
     alignToSurface: 0
+    snapToCellCenter: 0
     heightOffset: 0
     spawnChance: 10
     minDistanceBetweenObjects: 1
@@ -1328,6 +1352,7 @@ MonoBehaviour:
     minScale: 2
     maxScale: 2
     alignToSurface: 0
+    snapToCellCenter: 1
     heightOffset: 0
     spawnChance: 10
     minDistanceBetweenObjects: 3
@@ -1353,8 +1378,9 @@ MonoBehaviour:
   objectPlacer: {fileID: 1950520765}
   instancedObjectPlacer: {fileID: 0}
   zoneSystem: {fileID: 1950520773}
-  fogCurtain: {fileID: 0}
-  fogPlacer: {fileID: 0}
+  roadGenerator: {fileID: 1950520782}
+  fogCurtain: {fileID: 1950520781}
+  fogPlacer: {fileID: 1950520780}
   generateOnStart: 1
   clearBeforeGenerate: 1
   logTimings: 1
@@ -1442,8 +1468,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9126e7d74644ee7479bea464b72418ca, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  width: 100
-  depth: 100
+  width: 40
+  depth: 150
   noiseScale: 0.5
   maxHeight: 0.7
   randomSeed: 1
@@ -1479,9 +1505,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   heightSource: {fileID: 1950520771}
   terrainBuilder: {fileID: 1950520776}
+  chunkedBuilder: {fileID: 0}
   zones: []
+  waterPercent: 0.2
+  waterPatchScale: 8
+  showWaterInGame: 1
+  waterMaterial: {fileID: 0}
+  waterPlaneColor: {r: 0.24377, g: 0.6226415, b: 0.4151403, a: 0.55}
   showGizmos: 1
   showZoneLabels: 1
+  showWater: 1
+  waterGizmoColor: {r: 0.15, g: 0.35, b: 0.8, a: 0.6}
   gizmoHeight: 0.05
   gizmoAlpha: 0.5
   updateColorsOnMesh: 1
@@ -1592,6 +1626,32 @@ MonoBehaviour:
   inset: 0
   heightOffset: 0
   jitterFraction: 0.25
+--- !u!114 &1950520782
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1950520764}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cb51839a0009e9941a40f3a642e60ca5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  heightSource: {fileID: 1950520771}
+  zoneSystem: {fileID: 1950520773}
+  terrainBuilder: {fileID: 1950520776}
+  chunkedBuilder: {fileID: 1950520777}
+  roadWidth: 2
+  heightWeight: 8
+  waterPenalty: 25
+  buildRoadMesh: 1
+  roadMaterial: {fileID: 0}
+  roadColor: {r: 0.45, g: 0.38, b: 0.28, a: 1}
+  meshHeightOffset: 0.02
+  showGizmos: 1
+  roadGizmoColor: {r: 0.6, g: 0.5, b: 0.2, a: 0.75}
+  gizmoHeight: 0.06
 --- !u!4 &2057484379 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 0be3360d1aa2ca04880b03e0d21c146d,

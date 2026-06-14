@@ -15,7 +15,7 @@ public class HeightMapGenerator : MonoBehaviour
     public int depth = 20;
 
     [Header("Настройки шума")]
-    public float noiseScale = 0.3f;
+    public float noiseScale = 0.08f;
     public float maxHeight = 0.5f;
 
     [Header("Сид")]
@@ -60,14 +60,29 @@ public class HeightMapGenerator : MonoBehaviour
     {
         float seedOffset = seed * 0.1f;
 
+        const int octaves = 4;
+        const float persistence = 0.5f;
+        const float lacunarity = 2f;
+
         for (int x = 0; x < width; x++)
         {
             for (int z = 0; z < depth; z++)
             {
-                float sampleX = x * noiseScale + seedOffset;
-                float sampleZ = z * noiseScale + seedOffset;
-                float noise = Mathf.PerlinNoise(sampleX, sampleZ);
-                heightMap[x, z] = noise * maxHeight;
+                float bx = x * noiseScale + seedOffset;
+                float bz = z * noiseScale + seedOffset;
+
+                // Фрактальный шум (fBm): крупная форма + детализация.
+                // Крупные октавы дают связные бассейны (низины) и водоразделы.
+                float amp = 1f, freq = 1f, sum = 0f, ampMax = 0f;
+                for (int o = 0; o < octaves; o++)
+                {
+                    sum += Mathf.PerlinNoise(bx * freq, bz * freq) * amp;
+                    ampMax += amp;
+                    amp *= persistence;
+                    freq *= lacunarity;
+                }
+
+                heightMap[x, z] = (sum / ampMax) * maxHeight;
             }
         }
     }
@@ -118,14 +133,27 @@ public class HeightMapGenerator : MonoBehaviour
             int z = index / width;
 
             float seedOffset = seed * 0.1f;
-            float2 coord = new float2(
-                x * noiseScale + seedOffset,
-                z * noiseScale + seedOffset
-            );
+            float bx = x * noiseScale + seedOffset;
+            float bz = z * noiseScale + seedOffset;
 
-            // cnoise: [-1, 1] → нормализуем в [0, 1]
-            float n = Unity.Mathematics.noise.cnoise(coord) * 0.5f + 0.5f;
-            heights[index] = n * maxHeight;
+            // Фрактальный шум (fBm): крупная форма + детализация.
+            const int octaves = 4;
+            const float persistence = 0.5f;
+            const float lacunarity = 2f;
+
+            float amp = 1f, freq = 1f, sum = 0f, ampMax = 0f;
+            for (int o = 0; o < octaves; o++)
+            {
+                float2 coord = new float2(bx * freq, bz * freq);
+                // cnoise: [-1, 1] → нормализуем в [0, 1]
+                float n = Unity.Mathematics.noise.cnoise(coord) * 0.5f + 0.5f;
+                sum += n * amp;
+                ampMax += amp;
+                amp *= persistence;
+                freq *= lacunarity;
+            }
+
+            heights[index] = (sum / ampMax) * maxHeight;
         }
     }
 

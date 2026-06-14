@@ -86,6 +86,7 @@ public class FogPlacer : MonoBehaviour
 
             var go = InstantiatePrefab(fogPrefab, pos);
             go.name = $"Fog_{placed}";
+            go.tag = "FogPatch";
             _placed.Add(pos);
             placed++;
         }

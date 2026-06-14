@@ -21,6 +21,7 @@ public class TerrainManager : MonoBehaviour
 
     [Header("Опциональные системы")]
     public TerrainZoneSystem zoneSystem;
+    public RoadGenerator roadGenerator;                 // процедурная дорога
     public MapFogCurtain fogCurtain;                    // туман-занавес по краям карты
     public FogPlacer fogPlacer;                         // очаги тумана на карте
 
@@ -92,6 +93,13 @@ public class TerrainManager : MonoBehaviour
             LogStep("Зоны", ref sw);
         }
 
+        // 3.5 Дорога (после зон — нужна вода; до объектов — чтобы деревья её обходили)
+        if (roadGenerator != null)
+        {
+            roadGenerator.GenerateRoad();
+            LogStep("Дорога", ref sw);
+        }
+
         // 4. Объекты
         if (instancedObjectPlacer != null)
         {
@@ -130,6 +138,7 @@ public class TerrainManager : MonoBehaviour
         if (instancedObjectPlacer != null) instancedObjectPlacer.ClearObjects();
         if (heightGenerator != null) heightGenerator.Clear();
         if (zoneSystem != null) zoneSystem.ClearZones();
+        if (roadGenerator != null) roadGenerator.ClearRoad();
         if (fogCurtain != null) fogCurtain.ClearCurtain();
         if (fogPlacer != null) fogPlacer.ClearFog();
     }
@@ -150,6 +159,7 @@ public class TerrainManager : MonoBehaviour
         if (objectPlacer == null) objectPlacer = GetComponent<ObjectPlacer>();
         if (instancedObjectPlacer == null) instancedObjectPlacer = GetComponent<InstancedObjectPlacer>();
         if (zoneSystem == null) zoneSystem = GetComponent<TerrainZoneSystem>();
+        if (roadGenerator == null) roadGenerator = GetComponent<RoadGenerator>();
         if (fogCurtain == null) fogCurtain = GetComponent<MapFogCurtain>();
         if (fogPlacer == null) fogPlacer = GetComponent<FogPlacer>();
     }
