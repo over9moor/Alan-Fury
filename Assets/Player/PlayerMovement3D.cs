@@ -58,6 +58,9 @@ public class PlayerMovement3D : MonoBehaviour
     [Header("Прочее")]
     public float rotationSpeed = 15f;
     public float gravity = -20f;
+    
+    [Header("Анимация")]
+    public Animator animator;
 
     [Header("Граница карты (опционально)")]
     [Tooltip("Если не задана — берётся MapBoundary с этого же объекта.")]
@@ -72,6 +75,8 @@ public class PlayerMovement3D : MonoBehaviour
     private float _verticalVelocity;
     private GaitConfig _currentGait;
     private bool _isRunning;
+    // Поворот (снап по 45°)
+    private float _lastActiveAngle = -180f; // последнее активное направление; старт — вниз-вправо
 
     // Манёвры
     private bool _isDodging;
@@ -108,7 +113,11 @@ public class PlayerMovement3D : MonoBehaviour
 
         HandleGait();
         HandleMovement();
+        HandleRotation();
         ApplyGravity();
+
+        if (animator != null)
+            animator.SetBool("IsMoving", _velocity.magnitude > 0.1f);
     }
 
     // ──────────────────────────────────────────────
@@ -219,7 +228,6 @@ public class PlayerMovement3D : MonoBehaviour
                 _currentGait.acceleration * Time.deltaTime);
 
             MoveHorizontal(_velocity * Time.deltaTime);
-            HandleRotation();
         }
         else
         {
@@ -249,22 +257,33 @@ public class PlayerMovement3D : MonoBehaviour
     {
         if (_mainCamera == null) return;
 
-        Ray ray = _mainCamera.ScreenPointToRay(Input.mousePosition);
-        if (new Plane(Vector3.up, transform.position).Raycast(ray, out float dist))
+        if (_velocity.magnitude > 0.1f)
         {
-            Vector3 look = ray.GetPoint(dist) - transform.position;
-            look.y = 0f;
-            if (look.magnitude > 0.1f)
-                transform.rotation = Quaternion.Slerp(
-                    transform.rotation,
-                    Quaternion.LookRotation(look),
-                    rotationSpeed * Time.deltaTime);
+            // Движение: снап направления на мышь к ближайшему из 8 (шаг 45°)
+            Ray ray = _mainCamera.ScreenPointToRay(Input.mousePosition);
+            if (new Plane(Vector3.up, transform.position).Raycast(ray, out float dist))
+            {
+                Vector3 look = ray.GetPoint(dist) - transform.position;
+                look.y = 0f;
+                if (look.magnitude > 0.1f)
+                {
+                    float angle = Quaternion.LookRotation(look).eulerAngles.y;
+                    float snapped = Mathf.Round(angle / 45f) * 45f;
+                    _lastActiveAngle = Mathf.DeltaAngle(0f, snapped);
+                    transform.rotation = Quaternion.Euler(0f, snapped, 0f);
+                }
+            }
+        }
+        else
+        {
+            // Покой: вниз-вправо (-180) или вниз-влево (-90)
+            float a = Mathf.DeltaAngle(0f, _lastActiveAngle);
+            bool left = (a == -135f || a == -90f || a == -45f || a == 0f);
+            float rest = left ? -90f : -180f;
+            transform.rotation = Quaternion.Euler(0f, rest, 0f);
         }
     }
 
-    // ──────────────────────────────────────────────
-    // Гравитация
-    // ──────────────────────────────────────────────
 
     void ApplyGravity()
     {

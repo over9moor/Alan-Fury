@@ -7,6 +7,9 @@ public class CombatController3D : MonoBehaviour
     public PlayerLoadout loadout;
     public WeaponHitbox hitbox;
 
+    [Header("Анимация")]
+    public Animator animator;
+
     [Header("Захват цели")]
     public float targetLockRange = 15f;
     public LayerMask enemyLayers;
@@ -97,6 +100,8 @@ public class CombatController3D : MonoBehaviour
         chargeStartTime = Time.time;
         ChargePercent = 0f;
 
+        if (animator != null) animator.SetBool("IsCharging", true);
+
         if (hitbox != null && hitbox.visual != null)
             hitbox.visual.ShowWindup();
     }
@@ -106,6 +111,13 @@ public class CombatController3D : MonoBehaviour
         if (!isHoldingAttack) return;
 
         IsCharging = false;
+
+        if (animator != null)
+        {
+            animator.SetBool("IsCharging", false);
+            animator.SetTrigger("Attack");
+        }
+
         isHoldingAttack = false;
 
         // Быстрый клик — атака с минимальным зарядом
