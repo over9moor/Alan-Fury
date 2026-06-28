@@ -24,6 +24,8 @@ public class TerrainManager : MonoBehaviour
     public RoadGenerator roadGenerator;                 // процедурная дорога
     public MapFogCurtain fogCurtain;                    // туман-занавес по краям карты
     public FogPlacer fogPlacer;                         // очаги тумана на карте
+    public Pathfinder pathfinder;                       // сетка проходимости для AI (строится после деревьев)
+    public MapBoundary mapBoundary;                     // мягкая граница карты (пересчёт после генерации)
 
     [Header("Настройки запуска")]
     public bool generateOnStart = true;
@@ -100,6 +102,16 @@ public class TerrainManager : MonoBehaviour
             LogStep("Дорога", ref sw);
         }
 
+        // 3.6 Дорога сгладила карту высот → пересобрать меш и перекрасить зоны,
+        //     чтобы выровненная поверхность под дорогой отобразилась (вариант A).
+        if (roadGenerator != null && roadGenerator.flattenAlongRoad)
+        {
+            if (chunkedTerrainBuilder != null) chunkedTerrainBuilder.BuildTerrain();
+            else if (terrainBuilder != null) terrainBuilder.BuildTerrain();
+            if (zoneSystem != null) zoneSystem.UpdateTerrainColors();
+            LogStep("Пересборка меша после дороги", ref sw);
+        }
+
         // 4. Объекты
         if (instancedObjectPlacer != null)
         {
@@ -110,6 +122,18 @@ public class TerrainManager : MonoBehaviour
         {
             objectPlacer.PlaceAllObjects();
             LogStep("Объекты", ref sw);
+        }
+
+        // 4.5 Сетка проходимости для AI (после деревьев — они стены) + пересчёт границы карты.
+        if (pathfinder != null)
+        {
+            pathfinder.Build();
+            LogStep("Сетка путей", ref sw);
+        }
+        if (mapBoundary != null)
+        {
+            mapBoundary.Recompute();
+            LogStep("Граница карты", ref sw);
         }
 
         // 5. Туман по краям
@@ -162,6 +186,8 @@ public class TerrainManager : MonoBehaviour
         if (roadGenerator == null) roadGenerator = GetComponent<RoadGenerator>();
         if (fogCurtain == null) fogCurtain = GetComponent<MapFogCurtain>();
         if (fogPlacer == null) fogPlacer = GetComponent<FogPlacer>();
+        if (pathfinder == null) pathfinder = GetComponent<Pathfinder>();
+        if (mapBoundary == null) mapBoundary = GetComponent<MapBoundary>();
     }
 
     private bool ValidateComponents()

@@ -2,106 +2,303 @@
 using System.Collections.Generic;
 
 /// <summary>
-/// Добоевое поведение альфа-оборотня (сталкинг). Отдельно от боевого WerewolfBrain.
+/// Добоевое поведение альфа-оборотня на дереве поведения (BT). Бой — отдельный скрипт.
 ///
-/// Три зоны по горизонтальной дистанции до игрока:
-///  - dist &lt; minDistance         → РАЗРЫВ ДИСТАНЦИИ: быстро уходит прочь дугой (fleeSpeed),
-///                                    лицом по ходу бега, не пересекая игрока. Как только
-///                                    dist ≥ minDistance — возвращается к скрытной слежке.
-///  - minDistance ≤ dist ≤ maxDistance → СЛЕЖКА: крадётся (stalkSpeed) к укрытию за спиной
-///                                    игрока, сидит в нём и наблюдает, иногда меняет позицию.
-///  - dist &gt; maxDistance         → ДОГОН: быстрее (chaseSpeed, без крадущегося темпа)
-///                                    двигается к укрытию ближе к игроку, сокращая разрыв.
+/// Дерево (Selector, приоритет сверху вниз):
+///   1. Сбегает   — игрок ближе spookRadius; бежит ОТ игрока веером (вдоль края, не в край),
+///                  пока дистанция не станет больше fleeUntilDistance.
+///   2. Преследует — игрок дальше stalkMax; подходит до stalkMax.
+///   3. Прячется   — иначе: старается стоять в тумане в ЗАДНЕЙ полусфере игрока.
+///        • текущий туман задний и в полосе дистанции → стоит, смотрит;
+///        • игрок ближе stalkMin → отступает (от игрока + снос вбок), быстрее;
+///        • туман перестал быть задним / игрок вышел из зоны → выждать reactDelay
+///          (короче, если игрок близко), затем шаг к ближайшему заднему туману
+///          (не сквозь игрока), по дороге пересчёт пути; дошёл → переоценка.
 ///
-/// Туман: объекты с тегом coverTag (FogPlacer вешает его на очаги).
-/// (IsConcealedAt оставлен на будущее, сейчас НЕ вызывается: туман не делает невидимым.)
+/// ВСЕ скорости держим ниже boundEnterSpeed локомоушна → баллистические скачки в добою
+/// не включаются, оборотень не вылетает за карту. Точки целей подтягиваются на сетку
+/// (Pathfinder.NearestWalkableWorld), поэтому к краю он не идёт.
 ///
-/// Швы на будущее: OpenPursuit, Encircle, Attack — пока заглушки в enum.
-///
+/// Укрытия — объекты с тегом coverTag (FogPlacer вешает на очаги тумана).
+/// IsConcealedAt() зовётся из WerewolfPerception — это «невидим в тумане».
 /// ВАЖНО: пока работает сталкинг, держи WerewolfBrain выключенным (оба зовут MoveTo).
-/// Скорости относительно локомоушна: stalkSpeed НИЖЕ boundEnterSpeed (без скачков),
-/// fleeSpeed ВЫШЕ boundEnterSpeed (со скачками). chaseSpeed — посередине.
 /// </summary>
 [RequireComponent(typeof(WerewolfPerception))]
 [RequireComponent(typeof(WerewolfLocomotion))]
 public class AlphaStalker : MonoBehaviour
 {
-    public enum AlphaState { Stalk, Reposition /*, OpenPursuit, Encircle, Attack — позже*/ }
-
     [Header("Ссылки")]
     public WerewolfPerception perception;
     public WerewolfLocomotion locomotion;
+    [Tooltip("Сетка проходимости. ОБЯЗАТЕЛЬНА: на ней держится «не за карту».")]
+    public Pathfinder pathfinder;
 
-    [Header("Зоны (м, до игрока)")]
-    [Tooltip("Ближе этого — разрывает дистанцию (убегает).")]
-    public float minDistance = 25f;
-    [Tooltip("Дальше этого — догоняет. Между min и max — сидит в укрытии и наблюдает.")]
-    public float maxDistance = 35f;
+    [Header("Дистанции (м): spook < stalkMin < stalkMax < fleeUntil")]
+    public float spookRadius = 6f;
+    public float stalkMin = 10f;
+    public float stalkMax = 22f;
+    public float fleeUntilDistance = 50f;
+
+    [Header("Задняя полусфера")]
+    [Tooltip("Полуугол задней зоны от спины игрока (градусы). 90 = вся задняя половина; больше = только глубоко сзади.")]
+    public float rearAngle = 90f;
 
     [Header("Укрытия (туман)")]
-    [Tooltip("Тег объектов-укрытий. Создай его в Project Settings → Tags. FogPlacer вешает его на очаги.")]
     public string coverTag = "FogPatch";
     [Tooltip("Радиус укрытия (м): внутри него оборотень считается спрятанным.")]
     public float coverRadius = 12f;
-    [Tooltip("Допуск к дальней границе полосы при поиске очага тумана (м).")]
+    [Tooltip("Запас к stalkMax при отборе укрытий по дистанции до игрока (м).")]
     public float coverSnapRadius = 14f;
-    [Tooltip("Насколько близко к центру очага считать, что 'дошёл' и можно сидеть (м).")]
-    public float coverArriveRadius = 2.5f;
-    [Tooltip("Сколько секунд сидеть в укрытии, прежде чем сменить его.")]
-    public float holdSeconds = 5f;
+    [Tooltip("Базовая задержка реакции на потерю «задней» позиции (сек). Вблизи игрока сокращается.")]
+    public float reactDelay = 0.5f;
+    [Tooltip("Не выбирать укрытие, путь к которому проходит ближе этого к игроку (м).")]
+    public float coverCrossPlayerRadius = 4f;
 
-    [Header("Скорости (м/с)")]
-    [Tooltip("Подкрад в полосе слежки. НИЖЕ boundEnterSpeed локомоушна — без скачков.")]
-    public float stalkSpeed = 4f;
-    [Tooltip("Догон, когда дальше maxDistance. Быстрее подкрада, красться не нужно.")]
-    public float chaseSpeed = 8f;
-    [Tooltip("Разрыв дистанции. ВЫШЕ boundEnterSpeed → срывается в скачки.")]
-    public float fleeSpeed = 12f;
+    [Header("Скорости (м/с) — все НИЖЕ boundEnterSpeed, чтобы не было скачков")]
+    public float stalkSpeed = 4f;     // тихий шаг между укрытиями
+    public float retreatSpeed = 8f;   // отступ при сближении
+    public float pursueSpeed = 7f;    // подход издалека
+    public float fleeSpeed = 8f;      // сбегание
 
-    [Header("Уход (разрыв дистанции)")]
-    [Tooltip("На какую дистанцию ОТ игрока отбегать при разрыве (целься в полосу).")]
-    public float repositionDistance = 32f;
-    [Tooltip("Угол дуги вбок при уходе (град): больше — сильнее обходит сбоку, а не строго назад.")]
-    public float repositionSpread = 60f;
+    [Header("Поиск пути")]
+    public float pathRepathInterval = 0.4f;
 
     [Header("Давление сталкинга (задел под вой/призыв)")]
-    [Tooltip("Копится, пока альфа в полосе слежки. Сейчас геймплейно ни на что не влияет.")]
     public float pressurePerSecond = 0.15f;
-    [Tooltip("Автоматически дёргать onReadyToCall при заполнении. Обычно триггер внешний (святилище).")]
     public bool autoCallWhenPressured = false;
-
-    /// <summary>Сигнал «альфа готова звать стаю». Подключай свой переход к фазе воя.</summary>
     public System.Action onReadyToCall;
-
-    public AlphaState State => _state;
     public float StalkPressure01 => Mathf.Clamp01(_pressure);
 
-    private AlphaState _state = AlphaState.Stalk;
-    private Vector3 _repoTarget;
-    private float _repoAngle;     // фиксированный угол дуги ухода (рад), выбран при входе
-    private float _holdTimer;     // сколько уже сидим в текущем укрытии
+    // ============ Рантайм ============
+    private float _dt, _dist;
+    private bool _seen;
+    private bool _fleeing;
     private float _pressure;
+    private float _reactTimer;
 
-    // Кэш укрытий: собирается один раз при старте (туман статичен после генерации).
     private readonly List<Transform> _covers = new List<Transform>();
-    private Transform _currentCover; // куда идём / где сидим
-    private Transform _avoidCover;   // от какого очага только что отошли (чтобы сменить, а не вернуться)
+    private Transform _currentCover;
+
+    private readonly List<Vector3> _path = new List<Vector3>();
+    private int _pathIndex;
+    private float _repathTimer;
+    private Vector3 _lastGoal;
+    private const float RepathGoalMoveSqr = 9f;
+
+    private const int AwaySamples = 7;     // веер направлений отхода
+    private const float AwayArcDeg = 70f;  // полусектор веера
+
+    private BTNode _root;
 
     void Start()
     {
         if (perception == null) perception = GetComponent<WerewolfPerception>();
         if (locomotion == null) locomotion = GetComponent<WerewolfLocomotion>();
+        if (pathfinder == null) pathfinder = FindObjectOfType<Pathfinder>();
+        if (pathfinder == null)
+            Debug.LogWarning("AlphaStalker: Pathfinder не назначен — защита от ухода за карту не работает!");
         RefreshCovers();
+        BuildTree();
     }
 
-    // =================== Укрытия ===================
+    private void BuildTree()
+    {
+        _root = new BTSelector(
+            new BTSequence(new BTCondition(ShouldFlee), new BTAction(TickFlee)),
+            new BTSequence(new BTCondition(ShouldPursue), new BTAction(TickPursue)),
+            new BTAction(TickHide)
+        );
+    }
 
-    /// <summary>Пересобрать кэш укрытий (дёргай, если туман пересоздался в рантайме).</summary>
+    void Update()
+    {
+        _dt = Time.deltaTime;
+        if (perception == null || !perception.HasPlayer) return; // поиск/обнаружение — позже
+        _dist = perception.DistanceToPlayer;
+        _seen = perception.IsSeenByPlayer();
+        _root.Tick();
+    }
+
+    // =================== Ветки ===================
+
+    private bool ShouldFlee()
+    {
+        if (_dist < spookRadius) _fleeing = true;
+        else if (_dist > fleeUntilDistance) _fleeing = false;
+        return _fleeing;
+    }
+
+    private NodeStatus TickFlee()
+    {
+        Vector3 goal = ChooseAwayGoal(stalkMax * 1.3f);
+        MoveAlongPath(goal, fleeSpeed, _dt);
+        locomotion.FaceTowards(goal, _dt);
+        return NodeStatus.Running;
+    }
+
+    private bool ShouldPursue() => !_fleeing && _dist > stalkMax;
+
+    private NodeStatus TickPursue()
+    {
+        Vector3 toMe = perception.DirFromPlayerFlat;
+        Vector3 goal = ClampGoal(perception.PlayerPos + toMe * stalkMax);
+        MoveAlongPath(goal, pursueSpeed, _dt);
+        locomotion.FaceTowards(perception.PlayerPos, _dt);
+        return NodeStatus.Running;
+    }
+
+    private NodeStatus TickHide()
+    {
+        Vector3 player = perception.PlayerPos;
+        _pressure += pressurePerSecond * _dt;
+        if (autoCallWhenPressured && _pressure >= 1f) onReadyToCall?.Invoke();
+
+        // Слишком близко → отступаем (от игрока + снос), сбрасываем укрытие.
+        if (_dist < stalkMin)
+        {
+            _currentCover = null; _reactTimer = 0f;
+            Vector3 g = ChooseRetreatGoal();
+            MoveAlongPath(g, retreatSpeed, _dt);
+            locomotion.FaceTowards(player, _dt);
+            return NodeStatus.Running;
+        }
+
+        bool good = _currentCover != null && InBand(_currentCover) && IsRear(_currentCover.position);
+
+        // В хорошем заднем тумане — стоим, смотрим, таймер реакции сброшен.
+        if (good)
+        {
+            _reactTimer = 0f;
+            MoveAlongPath(ClampGoal(_currentCover.position), stalkSpeed, _dt); // дойти и стоять
+            locomotion.FaceTowards(player, _dt);
+            return NodeStatus.Running;
+        }
+
+        // Позиция испортилась → ждём reactDelay (короче вблизи), потом меняем туман.
+        float t = Mathf.InverseLerp(stalkMax, stalkMin, _dist);     // 1 = близко
+        float delay = reactDelay * Mathf.Lerp(1f, 0.3f, t);
+        if (_currentCover != null && _reactTimer < delay)
+        {
+            _reactTimer += _dt;
+            locomotion.FaceTowards(player, _dt);                    // выжидаем на месте
+            return NodeStatus.Running;
+        }
+
+        // Шаг к ближайшему заднему туману.
+        Transform next = PickRearCover();
+        if (next != null && next != _currentCover) { _currentCover = next; ClearPath(); }
+
+        if (_currentCover != null)
+        {
+            bool reached = MoveAlongPath(ClampGoal(_currentCover.position), stalkSpeed, _dt);
+            if (reached) _reactTimer = 0f; // переоценим в следующем кадре
+        }
+        locomotion.FaceTowards(player, _dt);
+        return NodeStatus.Running;
+    }
+
+    // =================== Выбор укрытия ===================
+
+    private bool InBand(Transform c)
+    {
+        if (c == null) return false;
+        float toP = FlatDist(perception.PlayerPos, c.position);
+        return toP >= stalkMin && toP <= stalkMax + coverSnapRadius;
+    }
+
+    // Укрытие в задней полусфере игрока?
+    private bool IsRear(Vector3 cover)
+    {
+        Vector3 d = cover - perception.PlayerPos; d.y = 0f;
+        if (d.sqrMagnitude < 0.01f) return true;
+        d.Normalize();
+        float cosThr = Mathf.Cos(rearAngle * Mathf.Deg2Rad);
+        return Vector3.Dot(perception.PlayerForwardFlat, d) < cosThr;
+    }
+
+    // Ближайшее к себе укрытие: задний туман, в полосе, путь не сквозь игрока.
+    private Transform PickRearCover()
+    {
+        Transform best = null;
+        float bestSelf = float.MaxValue;
+        for (int i = 0; i < _covers.Count; i++)
+        {
+            Transform c = _covers[i];
+            if (c == null || !InBand(c) || !IsRear(c.position)) continue;
+            if (CrossesPlayer(c.position)) continue;
+
+            float s = FlatDist(transform.position, c.position);
+            if (s < bestSelf) { bestSelf = s; best = c; }
+        }
+        return best;
+    }
+
+    private bool CrossesPlayer(Vector3 target)
+    {
+        Vector2 a = new Vector2(transform.position.x, transform.position.z);
+        Vector2 b = new Vector2(target.x, target.z);
+        Vector2 p = new Vector2(perception.PlayerPos.x, perception.PlayerPos.z);
+        Vector2 ab = b - a;
+        float len2 = ab.sqrMagnitude;
+        float u = len2 > 1e-4f ? Mathf.Clamp01(Vector2.Dot(p - a, ab) / len2) : 0f;
+        Vector2 closest = a + ab * u;
+        return (p - closest).sqrMagnitude < coverCrossPlayerRadius * coverCrossPlayerRadius;
+    }
+
+    // Отступ: точка на кольце stalkMax ВОКРУГ ИГРОКА (обновляется от его позиции),
+    // веером выбираем ту, что меньше всего упирается в край.
+    private Vector3 ChooseRetreatGoal()
+    {
+        Vector3 player = perception.PlayerPos;
+        Vector3 away = perception.DirFromPlayerFlat; // от игрока к оборотню
+
+        Vector3 best = ClampGoal(player + away * stalkMax);
+        float bestScore = float.NegativeInfinity;
+
+        for (int i = 0; i < AwaySamples; i++)
+        {
+            float angle = Mathf.Lerp(-AwayArcDeg, AwayArcDeg, i / (float)(AwaySamples - 1));
+            Vector3 dir = Quaternion.AngleAxis(angle, Vector3.up) * away;
+            Vector3 raw = player + dir * stalkMax;          // кольцо вокруг игрока
+            Vector3 clamped = ClampGoal(raw);
+
+            float pull = FlatDist(raw, clamped);            // утянуло к проходимой клетке (край = много)
+            float score = -pull;
+            if (score > bestScore) { bestScore = score; best = clamped; }
+        }
+        return best;
+    }
+
+    // Точка отхода от игрока: веер направлений, берём ту, что меньше всего упирается в край.
+    private Vector3 ChooseAwayGoal(float range)
+    {
+        Vector3 away = perception.DirFromPlayerFlat; // от игрока к оборотню
+        Vector3 player = perception.PlayerPos;
+
+        Vector3 bestGoal = ClampGoal(transform.position + away * range);
+        float bestScore = float.NegativeInfinity;
+
+        for (int i = 0; i < AwaySamples; i++)
+        {
+            float angle = Mathf.Lerp(-AwayArcDeg, AwayArcDeg, i / (float)(AwaySamples - 1));
+            Vector3 dir = Quaternion.AngleAxis(angle, Vector3.up) * away;
+            Vector3 raw = transform.position + dir * range;
+            Vector3 clamped = ClampGoal(raw);
+
+            float pull = FlatDist(raw, clamped);              // насколько цель «утянуло» (край = много)
+            float gain = FlatDist(clamped, player);           // как далеко от игрока
+            float score = gain - pull * 2f;                   // от игрока, но не в край
+            if (score > bestScore) { bestScore = score; bestGoal = clamped; }
+        }
+        return bestGoal;
+    }
+
+    // =================== Укрытия: кэш и API ===================
+
     public void RefreshCovers()
     {
         _covers.Clear();
         if (string.IsNullOrEmpty(coverTag)) return;
-
         GameObject[] found;
         try { found = GameObject.FindGameObjectsWithTag(coverTag); }
         catch (UnityException)
@@ -112,10 +309,7 @@ public class AlphaStalker : MonoBehaviour
         foreach (var go in found) _covers.Add(go.transform);
     }
 
-    /// <summary>
-    /// Скрыт ли hider от seeker'а укрытием. Сейчас НЕ используется
-    /// (туман не считается рейкастом против игрока), оставлено на будущее.
-    /// </summary>
+    /// <summary>Скрыт ли hider от seeker'а укрытием. Зовётся из WerewolfPerception.</summary>
     public bool IsConcealedAt(Vector3 hider, Vector3 seeker)
     {
         float r2 = coverRadius * coverRadius;
@@ -123,208 +317,80 @@ public class AlphaStalker : MonoBehaviour
         {
             if (_covers[i] == null) continue;
             Vector3 c = _covers[i].position;
-            if (FlatSqr(hider, c) <= r2 && FlatSqr(seeker, c) > r2)
-                return true;
+            if (FlatSqr(hider, c) <= r2 && FlatSqr(seeker, c) > r2) return true;
         }
         return false;
     }
 
-    // Очаг годен: в полосе дистанций от игрока И за его спиной (не перед лицом).
-    // Полоса: [minDistance, maxDistance + coverSnapRadius] — не ближе зоны бегства,
-    // с допуском по дальней границе, чтобы было к чему подтягиваться при догоне.
-    private bool CoverIsValid(Vector3 c, Vector3 playerPos, Vector3 back)
+    // =================== Ведение по пути ===================
+
+    private bool MoveAlongPath(Vector3 goal, float speed, float dt)
     {
-        float coverMin = minDistance;
-        float coverMax = maxDistance + coverSnapRadius;
-        float toPlayer = FlatSqr(playerPos, c);
-        if (toPlayer < coverMin * coverMin || toPlayer > coverMax * coverMax) return false;
+        if (pathfinder == null || !pathfinder.IsReady)
+            return locomotion.MoveTo(goal, speed, dt);
 
-        Vector3 d = c - playerPos; d.y = 0f;
-        if (d.sqrMagnitude < 0.0001f) return true;
-        d.Normalize();
-        return Vector3.Dot(d, back) > 0.2f; // в пределах ~78° от строгой спины
-    }
-
-    // Ближайший к нам валидный очаг за спиной игрока. avoid — очаг, который пропускаем,
-    // если есть альтернатива (чтобы сменить укрытие, а не сесть обратно в то же).
-    private Transform FindCover(Transform avoid)
-    {
-        Vector3 playerPos = perception.PlayerPos;
-        Vector3 back = -perception.PlayerForwardFlat;
-        Vector3 self = transform.position;
-
-        Transform best = null;
-        float bestSqr = float.MaxValue;
-        for (int i = 0; i < _covers.Count; i++)
+        _repathTimer -= dt;
+        bool needRepath = _path.Count == 0 || _pathIndex >= _path.Count
+                       || _repathTimer <= 0f || FlatSqr(goal, _lastGoal) > RepathGoalMoveSqr;
+        if (needRepath)
         {
-            if (_covers[i] == null || _covers[i] == avoid) continue;
-            Vector3 c = _covers[i].position;
-            if (!CoverIsValid(c, playerPos, back)) continue;
-
-            float toSelf = FlatSqr(self, c);
-            if (toSelf < bestSqr) { best = _covers[i]; bestSqr = toSelf; }
+            _repathTimer = pathRepathInterval;
+            _lastGoal = goal;
+            if (pathfinder.TryFindPath(transform.position, goal, _path)) _pathIndex = 0;
+            else _path.Clear();
         }
-        return best;
+
+        if (_path.Count == 0) return FlatDistSelf(goal) <= 2f;
+
+        Vector3 wp = _path[_pathIndex];
+        if (locomotion.MoveTo(wp, speed, dt))
+        {
+            _pathIndex++;
+            if (_pathIndex >= _path.Count) return true;
+        }
+        return false;
     }
+
+    private Vector3 ClampGoal(Vector3 goal)
+    {
+        if (pathfinder == null || !pathfinder.IsReady) return goal;
+        return pathfinder.NearestWalkableWorld(goal, out _);
+    }
+
+    private void ClearPath() { _path.Clear(); _pathIndex = 0; _repathTimer = 0f; }
+
+    // =================== Утилиты ===================
 
     private static float FlatSqr(Vector3 a, Vector3 b)
     {
         float dx = a.x - b.x, dz = a.z - b.z;
         return dx * dx + dz * dz;
     }
-
-    void Update()
-    {
-        float dt = Time.deltaTime;
-
-        // Нет игрока — стоим на месте.
-        if (perception == null || !perception.HasPlayer) return;
-
-        float dist = perception.DistanceToPlayer;
-
-        switch (_state)
-        {
-            case AlphaState.Stalk: TickStalk(dt, dist); break;
-            case AlphaState.Reposition: TickReposition(dt, dist); break;
-        }
-    }
-
-    // =================== Stalk (слежка + догон) ===================
-
-    private void TickStalk(float dt, float dist)
-    {
-        // Зона бегства: игрок слишком близко — разрываем дистанцию.
-        if (dist < minDistance) { EnterReposition(); return; }
-
-        // Скорость: дальше полосы — догоняем быстрее, в полосе — крадёмся.
-        float moveSpeed = dist > maxDistance ? chaseSpeed : stalkSpeed;
-
-        // Текущий очаг ещё годен? Если игрок ушёл — очаг выпадет из полосы.
-        if (_currentCover != null && !CoverIsValid(_currentCover.position,
-                perception.PlayerPos, -perception.PlayerForwardFlat))
-        {
-            _avoidCover = null;
-            _currentCover = null;
-            _holdTimer = 0f;
-        }
-
-        // Нет цели — выбираем ближайший очаг (избегая того, от которого только что отошли).
-        if (_currentCover == null)
-        {
-            _currentCover = FindCover(_avoidCover);
-            if (_currentCover == null) _avoidCover = null; // нет альтернативы — снимаем запрет
-            _holdTimer = 0f;
-        }
-
-        // Укрытий рядом нет — двигаемся к точке в полосе за спиной игрока.
-        if (_currentCover == null)
-        {
-            locomotion.MoveTo(ComputeStalkSlot(), moveSpeed, dt);
-            locomotion.FaceTowards(perception.PlayerPos, dt);
-            AccumulatePressure(dist, dt);
-            return;
-        }
-
-        Vector3 cover = _currentCover.position;
-        bool arrived = FlatSqr(transform.position, cover) <= coverArriveRadius * coverArriveRadius;
-
-        if (!arrived)
-        {
-            // Идём к укрытию (крадёмся или догоняем — по moveSpeed).
-            locomotion.MoveTo(cover, moveSpeed, dt);
-            locomotion.FaceTowards(perception.PlayerPos, dt);
-        }
-        else
-        {
-            // Сидим в укрытии и наблюдаем (MoveTo НЕ зовём → локомоушн стоит).
-            locomotion.FaceTowards(perception.PlayerPos, dt);
-            _holdTimer += dt;
-            if (_holdTimer >= holdSeconds)
-            {
-                // Пора сменить укрытие: запоминаем текущее как нежелательное.
-                _avoidCover = _currentCover;
-                _currentCover = null;
-                _holdTimer = 0f;
-            }
-            AccumulatePressure(dist, dt);
-        }
-    }
-
-    private void AccumulatePressure(float dist, float dt)
-    {
-        if (dist <= maxDistance + coverSnapRadius)
-        {
-            _pressure += pressurePerSecond * dt;
-            if (autoCallWhenPressured && _pressure >= 1f) onReadyToCall?.Invoke();
-        }
-    }
-
-    // Запасная точка слежки (если тумана нет): за спиной игрока в середине полосы.
-    private Vector3 ComputeStalkSlot()
-    {
-        Vector3 behind = -perception.PlayerForwardFlat;
-        float bandMid = (minDistance + maxDistance) * 0.5f;
-        return perception.PlayerPos + behind * bandMid;
-    }
-
-    // =================== Reposition (разрыв дистанции дугой) ===================
-
-    private void EnterReposition()
-    {
-        _state = AlphaState.Reposition;
-        _currentCover = null;
-        _avoidCover = null;
-        _holdTimer = 0f;
-        // Случайная сторона дуги, угол фиксируем — обходим стабильно влево или вправо.
-        float sign = Random.value < 0.5f ? -1f : 1f;
-        _repoAngle = sign * repositionSpread * Mathf.Deg2Rad;
-    }
-
-    private void TickReposition(float dt, float dist)
-    {
-        // Точку считаем каждый кадр от ТЕКУЩЕГО игрока (он движется), угол дуги зафиксирован.
-        _repoTarget = ComputeFleePoint(_repoAngle);
-        locomotion.MoveTo(_repoTarget, fleeSpeed, dt);   // высокая скорость → скачки
-        locomotion.FaceTowards(_repoTarget, dt);
-
-        // Разорвал дистанцию до полосы — назад к скрытной слежке.
-        if (dist >= minDistance)
-            _state = AlphaState.Stalk;
-    }
-
-    // Точка ухода: направление ОТ игрока К оборотню, отклонённое вбок на угол дуги.
-    // Так он уходит наружу и в сторону, а не сквозь игрока.
-    private Vector3 ComputeFleePoint(float angleRad)
-    {
-        Vector3 away = perception.DirFromPlayerFlat;
-        Vector3 dir = new Vector3(
-            away.x * Mathf.Cos(angleRad) - away.z * Mathf.Sin(angleRad),
-            0f,
-            away.x * Mathf.Sin(angleRad) + away.z * Mathf.Cos(angleRad));
-        return perception.PlayerPos + dir * repositionDistance;
-    }
+    private static float FlatDist(Vector3 a, Vector3 b) => Mathf.Sqrt(FlatSqr(a, b));
+    private float FlatDistSelf(Vector3 p) { Vector3 d = p - transform.position; d.y = 0f; return d.magnitude; }
 
 #if UNITY_EDITOR
     void OnDrawGizmosSelected()
     {
         if (perception == null || !perception.HasPlayer) return;
         Vector3 p = perception.PlayerPos;
+        Gizmos.color = new Color(1f, 0.3f, 0.2f, 0.7f); Gizmos.DrawWireSphere(p, spookRadius);
+        Gizmos.color = new Color(0.9f, 0.5f, 0.2f, 0.6f); Gizmos.DrawWireSphere(p, stalkMin);
+        Gizmos.color = new Color(0.9f, 0.8f, 0.2f, 0.6f); Gizmos.DrawWireSphere(p, stalkMax);
 
-        Gizmos.color = new Color(1f, 0.3f, 0.2f, 0.7f); Gizmos.DrawWireSphere(p, minDistance);
-        Gizmos.color = new Color(0.9f, 0.8f, 0.2f, 0.6f); Gizmos.DrawWireSphere(p, maxDistance);
+        // Спина игрока
+        Gizmos.color = Color.green;
+        Gizmos.DrawLine(p, p - perception.PlayerForwardFlat * stalkMax);
 
         Gizmos.color = new Color(0.7f, 0.7f, 0.9f, 0.35f);
         for (int i = 0; i < _covers.Count; i++)
             if (_covers[i] != null) Gizmos.DrawWireSphere(_covers[i].position, coverRadius);
 
-        if (Application.isPlaying)
+        if (Application.isPlaying && _currentCover != null)
         {
-            Vector3 t = _state == AlphaState.Reposition ? _repoTarget
-                      : _currentCover != null ? _currentCover.position
-                      : ComputeStalkSlot();
             Gizmos.color = Color.magenta;
-            Gizmos.DrawLine(transform.position, t);
-            Gizmos.DrawWireCube(t, Vector3.one * 0.6f);
+            Gizmos.DrawLine(transform.position, _currentCover.position);
+            Gizmos.DrawWireCube(_currentCover.position, Vector3.one * 0.6f);
         }
     }
 #endif

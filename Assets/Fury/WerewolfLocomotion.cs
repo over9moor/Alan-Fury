@@ -1,15 +1,16 @@
 ﻿using UnityEngine;
 
 /// <summary>
-/// Движение оборотня через CharacterController. Лестница аллюров:
-///  - низ/середина — бег по земле с импульсом шага (StepController), как у игрока;
-///  - верх — скачки: включаются только после разбега (скорость ≥ boundEnterSpeed,
-///    удержанная boundChargeTime), чейнятся с переносом импульса и за счёт
-///    boundTakeoffBoost дают БОЛЬШЕ метров в секунду, чем бег — самый быстрый аллюр;
-///  - упор в рельеф впереди — перепрыгивание препятствия.
+/// Движение оборотня через CharacterController.
+///  - бег по земле с импульсом шага (StepController), как у игрока; чем выше
+///    скорость, тем длиннее и чаще шаги (интерполяция trot → gallop) — самый
+///    быстрый аллюр это галоп, оборотень ВСЕГДА касается земли;
+///  - vault — преодоление рельефа по упору в препятствие (как у игрока, но с
+///    более высоким порогом): контролируемый перелёт дугой, без баллистики,
+///    поэтому за карту улететь нельзя.
 ///
-/// Мозг лишь говорит «беги к точке с такой скоростью» (MoveTo), а выбор аллюра —
-/// следствие фактической скорости, поэтому WerewolfBrain от этого не зависит.
+/// Мозг лишь говорит «беги к точке с такой скоростью» (MoveTo). Leap()/Jump() —
+/// отдельные боевые механики (наскок/прыжок) и к обычному движению отношения не имеют.
 /// </summary>
 [RequireComponent(typeof(CharacterController))]
 public class WerewolfLocomotion : MonoBehaviour
@@ -41,30 +42,21 @@ public class WerewolfLocomotion : MonoBehaviour
         stepFrequency = 3.6f
     };
 
-    [Header("Скачки — верхний аллюр (самый быстрый)")]
-    [Tooltip("Скорость, выше которой (удержав boundChargeTime) бег переходит в скачки (м/с).")]
-    public float boundEnterSpeed = 9f;
-    [Tooltip("Опускаемся ниже — скачки прекращаются (гистерезис, м/с).")]
-    public float boundExitSpeed = 6.5f;
-    [Tooltip("Сколько надо держать высокую скорость на земле перед первым скачком (сек).")]
-    public float boundChargeTime = 0.25f;
-    [Tooltip("Множитель горизонт. импульса на отталкивании — делает скачок дальше бега.")]
-    public float boundTakeoffBoost = 1.2f;
-    [Tooltip("Потолок горизонтальной скорости в скачках (м/с).")]
-    public float maxBoundSpeed = 14f;
-    [Tooltip("Контакт с землёй между скачками (сек). Мал = слитный галоп, велик = отдельные прыжки.")]
-    public float boundGroundTime = 0.08f;
-    public float minBoundHeight = 0.5f;
-    public float maxBoundHeight = 1.4f;
-    [Tooltip("Скорость, при которой скачок максимально высокий/длинный (м/с).")]
-    public float boundReferenceSpeed = 12f;
-
-    [Header("Перепрыгивание рельефа")]
-    public float obstacleLeapHeight = 1.6f;
-    [Tooltip("Дальность проверки препятствия впереди (м).")]
-    public float obstacleProbe = 0.6f;
-    [Tooltip("Минимальный горизонт. импульс при перепрыгивании препятствия (м/с).")]
-    public float obstacleMinSpeed = 6f;
+    [Header("Преодоление рельефа (vault — как у игрока, но лазает выше)")]
+    [Tooltip("Слой препятствий, которые можно перелезать (назначь Terrain).")]
+    public LayerMask vaultLayers;
+    [Tooltip("Макс. высота препятствия, которое оборотень осиливает (м). Выше игрока.")]
+    public float vaultMaxHeight = 2.0f;
+    [Tooltip("Дальность пробы препятствия перед перелазом (м).")]
+    public float vaultCheckDistance = 0.8f;
+    [Tooltip("Длительность перелаза (сек).")]
+    public float vaultDuration = 0.45f;
+    [Tooltip("Горизонтальная скорость во время перелаза (м/с).")]
+    public float vaultForwardSpeed = 7f;
+    [Tooltip("Высота дуги перелаза.")]
+    public float vaultRise = 1.6f;
+    [Tooltip("Пауза между перелазами (сек).")]
+    public float vaultCooldown = 0.6f;
 
     [Header("Гравитация")]
     public float gravity = -20f;
@@ -82,12 +74,15 @@ public class WerewolfLocomotion : MonoBehaviour
     private CharacterController _cc;
     private Vector3 _horizVel;
     private float _vertVel;
-    private bool _leaping;        // сейчас в воздухе (скачок/бросок)
-    private bool _bounding;       // режим галоп-скачков (поверх _leaping)
-    private float _chargeTimer;   // накопленное время высокой скорости на земле
-    private float _groundTimer;   // контакт с землёй с момента приземления
+    private bool _leaping;        // сейчас в воздухе (боевой Leap/Jump)
     private float _stepImpulse;   // импульс шага в этом кадре (наземная походка)
     private bool _placed;
+
+    // vault
+    private bool _vaulting;
+    private float _vaultTimer;
+    private Vector3 _vaultDir;
+    private float _lastVaultTime = -999f;
 
     private readonly StepController _step = new StepController();
 
@@ -97,7 +92,7 @@ public class WerewolfLocomotion : MonoBehaviour
 
     public bool IsGrounded => _cc != null && _cc.isGrounded;
     public bool IsLeaping => _leaping;
-    public bool IsBounding => _bounding;
+    public bool IsVaulting => _vaulting;
     public float CurrentSpeed => _horizVel.magnitude;
     public float StepCurve => _step.Curve;   // для боба/анимации/звука
 
@@ -115,13 +110,13 @@ public class WerewolfLocomotion : MonoBehaviour
         _moveFrame = Time.frameCount;
         _moveTarget = target;
         _moveSpeed = speed;
-        return !_leaping && FlatDistance(target) <= arriveThreshold;
+        return !_leaping && !_vaulting && FlatDistance(target) <= arriveThreshold;
     }
 
     /// <summary>Одиночный бросок точно в точку (прыжок-наскок в бою).</summary>
     public void Leap(Vector3 target, float height)
     {
-        if (_leaping || !_cc.isGrounded) return;
+        if (_leaping || _vaulting || !_cc.isGrounded) return;
         Vector3 to = target - transform.position; to.y = 0f;
         float dist = to.magnitude;
         Vector3 dir = dist > 0.0001f ? to / dist : transform.forward;
@@ -130,14 +125,14 @@ public class WerewolfLocomotion : MonoBehaviour
         float airTime = 2f * vUp / g;
         _horizVel = dir * (airTime > 0.0001f ? dist / airTime : 0f);
         _vertVel = vUp;
-        _leaping = true; _groundTimer = 0f;
+        _leaping = true;
         _step.Cancel();
     }
 
     /// <summary>Вертикальный прыжок на месте.</summary>
     public void Jump(float height)
     {
-        if (!_cc.isGrounded || _leaping) return;
+        if (!_cc.isGrounded || _leaping || _vaulting) return;
         _vertVel = Mathf.Sqrt(2f * -gravity * height);
     }
 
@@ -156,15 +151,18 @@ public class WerewolfLocomotion : MonoBehaviour
         if (!_placed) { if (TryPlaceOnGround()) _placed = true; return; }
 
         float dt = Time.deltaTime;
+
+        // Перелаз сам двигает оборотня — остальную физику в этом кадре пропускаем.
+        if (_vaulting) { TickVault(dt); return; }
+
         bool active = _moveFrame == Time.frameCount;
         Vector3 pos = transform.position;
 
         _stepImpulse = 0f;
-        if (_cc.isGrounded) _groundTimer += dt;
 
         if (_leaping)
         {
-            // В полёте горизонталь зафиксирована — баллистика.
+            // В полёте горизонталь зафиксирована — баллистика (боевой Leap/Jump).
         }
         else
         {
@@ -188,26 +186,9 @@ public class WerewolfLocomotion : MonoBehaviour
 
             float spd = _horizVel.magnitude;
 
-            // --- Заряд скачка + гистерезис ---
-            if (_cc.isGrounded && spd >= boundEnterSpeed) _chargeTimer += dt;
-            else if (spd < boundEnterSpeed) _chargeTimer = 0f;
-            if (_bounding && spd < boundExitSpeed) _bounding = false;
-
-            // --- Выбор аллюра на очередном такте контакта с землёй ---
-            bool beat = _cc.isGrounded && _groundTimer >= boundGroundTime;
-
-            if (beat && active && ObstacleAhead())
+            // --- Наземная походка с импульсом шага (как у игрока) ---
+            if (active && spd > 0.1f)
             {
-                StartBound(obstacleLeapHeight, obstacleMinSpeed, false);   // перепрыгнуть рельеф
-            }
-            else if (beat && (_bounding || _chargeTimer >= boundChargeTime) && spd >= boundExitSpeed)
-            {
-                _bounding = true;
-                StartBound(BoundHeightForSpeed(spd), 0f, true);            // галоп-скачок (верхний аллюр)
-            }
-            else if (active && spd > 0.1f)
-            {
-                // Наземная походка с импульсом шага (как у игрока)
                 _step.TryStart(spd, trot, gallop);
                 _stepImpulse = _step.Tick(dt);
             }
@@ -220,7 +201,7 @@ public class WerewolfLocomotion : MonoBehaviour
         // --- Гравитация ---
         if (_cc.isGrounded && _vertVel <= 0f)
         {
-            if (_leaping) { _leaping = false; _groundTimer = 0f; } // приземлились, импульс сохраняем
+            if (_leaping) _leaping = false; // приземлились, импульс сохраняем
             _vertVel = -2f;
         }
         else _vertVel += gravity * dt;
@@ -235,36 +216,67 @@ public class WerewolfLocomotion : MonoBehaviour
         _cc.Move(horiz + Vector3.up * (_vertVel * dt));
     }
 
-    // =================== helpers ===================
+    // =================== vault (перелаз рельефа) ===================
 
-    private void StartBound(float height, float minHorizontalSpeed, bool boost)
+    // Срабатывает, когда CharacterController упирается в коллайдер.
+    void OnControllerColliderHit(ControllerColliderHit hit)
     {
-        Vector3 dir = _horizVel.sqrMagnitude > 0.0001f ? _horizVel.normalized : transform.forward;
-        float spd = Mathf.Max(_horizVel.magnitude, minHorizontalSpeed);
-        if (spd < 0.01f) return;
+        if (_vaulting || _leaping) return;
+        if (!_cc.isGrounded) return;
+        if (Time.time - _lastVaultTime < vaultCooldown) return;
+        if ((vaultLayers.value & (1 << hit.gameObject.layer)) == 0) return;
 
-        if (boost) spd = Mathf.Min(spd * boundTakeoffBoost, maxBoundSpeed); // взрывное отталкивание
+        // Бьёмся в стену, а не в пол/потолок.
+        if (Mathf.Abs(hit.normal.y) > 0.3f) return;
 
-        _horizVel = dir * spd;                 // сохраняем/задаём горизонтальный импульс
-        _vertVel = Mathf.Sqrt(2f * -gravity * height);
-        _leaping = true; _groundTimer = 0f;
+        // Должны бежать именно в препятствие.
+        Vector3 flatVel = _horizVel; flatVel.y = 0f;
+        if (flatVel.sqrMagnitude < 0.1f) return;
+        Vector3 into = -hit.normal; into.y = 0f; into.Normalize();
+        if (Vector3.Dot(flatVel.normalized, into) < 0.5f) return;
+
+        // Препятствие низкое? Луч над его макс. высотой — если пусто, переваливаемся.
+        float feetY = transform.position.y - _cc.height * 0.5f + _cc.center.y;
+        Vector3 origin = new Vector3(transform.position.x, feetY + vaultMaxHeight, transform.position.z);
+        if (Physics.Raycast(origin, into, vaultCheckDistance, vaultLayers,
+                            QueryTriggerInteraction.Ignore)) return;  // слишком высокое
+
+        StartVault(into);
+    }
+
+    private void StartVault(Vector3 dir)
+    {
+        _vaulting = true;
+        _lastVaultTime = Time.time;
+        _vaultTimer = vaultDuration;
+        _vaultDir = dir;
+        _vertVel = 0f;
         _step.Cancel();
     }
 
-    private float BoundHeightForSpeed(float spd)
+    private void TickVault(float dt)
     {
-        float t = Mathf.InverseLerp(boundExitSpeed, boundReferenceSpeed, spd);
-        return Mathf.Lerp(minBoundHeight, maxBoundHeight, t);
+        _vaultTimer -= dt;
+        float t = 1f - Mathf.Clamp01(_vaultTimer / vaultDuration);  // 0 → 1
+
+        // Производная sin-дуги: вверх в начале, вниз в конце — плавный перелёт.
+        float vUp = vaultRise * (Mathf.PI / vaultDuration) * Mathf.Cos(t * Mathf.PI);
+
+        Vector3 horiz = _vaultDir * (vaultForwardSpeed * dt); horiz.y = 0f;
+        if (boundary != null && boundary.IsReady)
+            horiz = boundary.Constrain(transform.position, horiz);
+
+        _cc.Move(horiz + Vector3.up * (vUp * dt));
+
+        if (_vaultTimer <= 0f)
+        {
+            _vaulting = false;
+            // Переносим импульс в бег, чтобы не вставать колом сразу после перелаза.
+            _horizVel = _vaultDir * Mathf.Max(_horizVel.magnitude, vaultForwardSpeed * 0.6f);
+        }
     }
 
-    private bool ObstacleAhead()
-    {
-        if (_horizVel.sqrMagnitude < 0.04f) return false;
-        Vector3 dir = _horizVel.normalized;
-        Vector3 origin = transform.position + Vector3.up * (_cc.stepOffset + 0.15f);
-        float dist = _cc.radius + obstacleProbe;
-        return Physics.Raycast(origin, dir, dist, groundLayers, QueryTriggerInteraction.Ignore);
-    }
+    // =================== helpers ===================
 
     private bool TryPlaceOnGround()
     {

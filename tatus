@@ -1,0 +1,20 @@
+ .vsconfig                                          |   6 [32m+[m
+ Assets/Animations and tests.meta                   |   8 [32m+[m
+ Assets/Animations and tests/ArmMask.mask           |  21 [32m++[m
+ Assets/Animations and tests/ArmMask.mask.meta      |   8 [32m+[m
+ Assets/Animations and tests/Cube.fbx               | Bin [31m0[m -> [32m20544[m bytes
+ Assets/Animations and tests/Cube.fbx.meta          | 112 [32m++++++[m
+ Assets/Animations and tests/Cube@Attack.fbx        | Bin [31m0[m -> [32m35952[m bytes
+ Assets/Animations and tests/Cube@Attack.fbx.meta   | 168 [32m+++++++++[m
+ Assets/Animations and tests/Cube@Jump.fbx          | Bin [31m0[m -> [32m38528[m bytes
+ Assets/Animations and tests/Cube@Jump.fbx.meta     | 139 [32m++++++++[m
+ Assets/Animations and tests/Cube@Windup.fbx        | Bin [31m0[m -> [32m34656[m bytes
+ Assets/Animations and tests/Cube@Windup.fbx.meta   | 139 [32m++++++++[m
+ .../Animations and tests/PlayerAnimator.controller | 375 [32m+++++++++++++++++++++[m
+ .../PlayerAnimator.controller.meta                 |   8 [32m+[m
+ Assets/Player/Combat/CombatController3D.cs         |  12 [32m+[m
+ Assets/Player/PlayerMovement3D.cs                  |  45 [32m++[m[31m-[m
+ Assets/Scenes/SampleScene.unity                    |  90 [32m++++[m[31m-[m
+ Assets/Settings/SampleSceneProfile.asset           |  56 [32m+[m[31m--[m
+ Assets/Settings/URP-HighFidelity.asset             |   4 [32m+[m[31m-[m
+ 19 files changed, 1152 insertions(+), 39 deletions(-)

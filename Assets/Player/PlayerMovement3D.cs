@@ -55,12 +55,22 @@ public class PlayerMovement3D : MonoBehaviour
     public float rollDuration = 0.4f;
     public float rollCooldown = 1.2f;
 
+    [Header("Паркур (перепрыгивание)")]
+    [Tooltip("Слой препятствий, через которые можно переваливаться (объекты ObjectPlacer).")]
+    public LayerMask vaultLayers;
+    [Tooltip("Макс. высота препятствия над землёй, через которое ещё переваливаемся.")]
+    public float vaultMaxHeight = 1.2f;
+    [Tooltip("Дальность проверки 'не слишком ли высоко' над препятствием.")]
+    public float vaultCheckDistance = 0.8f;
+    public float vaultDuration = 0.45f;
+    public float vaultForwardSpeed = 7f;
+    [Tooltip("Высота дуги прыжка через препятствие.")]
+    public float vaultRise = 1.5f;
+    public float vaultCooldown = 0.8f;
+
     [Header("Прочее")]
     public float rotationSpeed = 15f;
     public float gravity = -20f;
-    
-    [Header("Анимация")]
-    public Animator animator;
 
     [Header("Граница карты (опционально)")]
     [Tooltip("Если не задана — берётся MapBoundary с этого же объекта.")]
@@ -75,8 +85,6 @@ public class PlayerMovement3D : MonoBehaviour
     private float _verticalVelocity;
     private GaitConfig _currentGait;
     private bool _isRunning;
-    // Поворот (снап по 45°)
-    private float _lastActiveAngle = -180f; // последнее активное направление; старт — вниз-вправо
 
     // Манёвры
     private bool _isDodging;
@@ -86,6 +94,12 @@ public class PlayerMovement3D : MonoBehaviour
     private Vector3 _maneuverDir;
     private float _lastDodgeTime;
     private float _lastRollTime;
+
+    // Паркур
+    private bool _isVaulting;
+    private float _vaultTimer;
+    private float _lastVaultTime;
+    private Vector3 _vaultDir;
 
     // Шаги
     private readonly StepController _step = new StepController();
@@ -103,6 +117,13 @@ public class PlayerMovement3D : MonoBehaviour
 
     void Update()
     {
+        // Паркур владеет всем кадром: своя дуга, без гравитации и обычного движения
+        if (_isVaulting)
+        {
+            TickVault();
+            return;
+        }
+
         HandleManeuvers();
 
         if (_isDodging || _isRolling)
@@ -113,11 +134,7 @@ public class PlayerMovement3D : MonoBehaviour
 
         HandleGait();
         HandleMovement();
-        HandleRotation();
         ApplyGravity();
-
-        if (animator != null)
-            animator.SetBool("IsMoving", _velocity.magnitude > 0.1f);
     }
 
     // ──────────────────────────────────────────────
@@ -177,6 +194,59 @@ public class PlayerMovement3D : MonoBehaviour
     }
 
     // ──────────────────────────────────────────────
+    // Паркур: перепрыгивание при столкновении на спринте
+    // ──────────────────────────────────────────────
+
+    // Срабатывает, когда CharacterController упирается в коллайдер.
+    void OnControllerColliderHit(ControllerColliderHit hit)
+    {
+        if (_isVaulting || _isDodging || _isRolling) return;
+        if (!Input.GetKey(KeyCode.LeftShift)) return;                 // только на спринте
+        if (Time.time - _lastVaultTime < vaultCooldown) return;
+        if ((vaultLayers.value & (1 << hit.gameObject.layer)) == 0) return;
+
+        // Бьёмся в стену, а не в пол/потолок
+        if (Mathf.Abs(hit.normal.y) > 0.3f) return;
+
+        // Двигаемся именно в препятствие
+        Vector3 flatVel = _velocity; flatVel.y = 0f;
+        if (flatVel.sqrMagnitude < 0.1f) return;
+        Vector3 into = -hit.normal; into.y = 0f; into.Normalize();
+        if (Vector3.Dot(flatVel.normalized, into) < 0.5f) return;
+
+        // Препятствие низкое? Луч над его макс. высотой — если пусто, переваливаемся
+        float feetY = transform.position.y - _controller.height * 0.5f + _controller.center.y;
+        Vector3 origin = new Vector3(transform.position.x, feetY + vaultMaxHeight, transform.position.z);
+        if (Physics.Raycast(origin, into, vaultCheckDistance, vaultLayers)) return;  // слишком высокое
+
+        StartVault(into);
+    }
+
+    void StartVault(Vector3 dir)
+    {
+        _isVaulting = true;
+        _lastVaultTime = Time.time;
+        _vaultTimer = vaultDuration;
+        _vaultDir = dir;
+        _verticalVelocity = 0f;
+        _step.Cancel();
+    }
+
+    void TickVault()
+    {
+        _vaultTimer -= Time.deltaTime;
+        float t = 1f - Mathf.Clamp01(_vaultTimer / vaultDuration);  // 0 → 1
+
+        // Производная sin-дуги: вверх в начале, вниз в конце — плавный перелёт
+        float vUp = vaultRise * (Mathf.PI / vaultDuration) * Mathf.Cos(t * Mathf.PI);
+        Vector3 step = _vaultDir * vaultForwardSpeed + Vector3.up * vUp;
+        _controller.Move(step * Time.deltaTime);
+
+        if (_vaultTimer <= 0f)
+            _isVaulting = false;
+    }
+
+    // ──────────────────────────────────────────────
     // Выбор режима
     // ──────────────────────────────────────────────
 
@@ -228,10 +298,14 @@ public class PlayerMovement3D : MonoBehaviour
                 _currentGait.acceleration * Time.deltaTime);
 
             MoveHorizontal(_velocity * Time.deltaTime);
+            HandleRotation();
         }
         else
         {
             _step.Cancel();
+
+            // Доворот к мыши стоя — так же, как на ходу
+            HandleRotation();
 
             // Торможение — у walk резкое, у sprint плавное
             if (_velocity.magnitude > 0.05f)
@@ -257,33 +331,22 @@ public class PlayerMovement3D : MonoBehaviour
     {
         if (_mainCamera == null) return;
 
-        if (_velocity.magnitude > 0.1f)
+        Ray ray = _mainCamera.ScreenPointToRay(Input.mousePosition);
+        if (new Plane(Vector3.up, transform.position).Raycast(ray, out float dist))
         {
-            // Движение: снап направления на мышь к ближайшему из 8 (шаг 45°)
-            Ray ray = _mainCamera.ScreenPointToRay(Input.mousePosition);
-            if (new Plane(Vector3.up, transform.position).Raycast(ray, out float dist))
-            {
-                Vector3 look = ray.GetPoint(dist) - transform.position;
-                look.y = 0f;
-                if (look.magnitude > 0.1f)
-                {
-                    float angle = Quaternion.LookRotation(look).eulerAngles.y;
-                    float snapped = Mathf.Round(angle / 45f) * 45f;
-                    _lastActiveAngle = Mathf.DeltaAngle(0f, snapped);
-                    transform.rotation = Quaternion.Euler(0f, snapped, 0f);
-                }
-            }
-        }
-        else
-        {
-            // Покой: вниз-вправо (-180) или вниз-влево (-90)
-            float a = Mathf.DeltaAngle(0f, _lastActiveAngle);
-            bool left = (a == -135f || a == -90f || a == -45f || a == 0f);
-            float rest = left ? -90f : -180f;
-            transform.rotation = Quaternion.Euler(0f, rest, 0f);
+            Vector3 look = ray.GetPoint(dist) - transform.position;
+            look.y = 0f;
+            if (look.magnitude > 0.1f)
+                transform.rotation = Quaternion.Slerp(
+                    transform.rotation,
+                    Quaternion.LookRotation(look),
+                    rotationSpeed * Time.deltaTime);
         }
     }
 
+    // ──────────────────────────────────────────────
+    // Гравитация
+    // ──────────────────────────────────────────────
 
     void ApplyGravity()
     {

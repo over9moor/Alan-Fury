@@ -15,8 +15,19 @@ public class HeightMapGenerator : MonoBehaviour
     public int depth = 20;
 
     [Header("Настройки шума")]
-    public float noiseScale = 0.08f;
+    [Tooltip("Частота шума в мировых единицах (на метр). Размер форм не зависит от размера карты. Ниже = крупнее холмы.")]
+    public float noiseScale = 0.02f;
     public float maxHeight = 0.5f;
+    [Tooltip("Доля «хребтистости»: 0 — округлые холмы (fBm), 1 — острые гребни (ridged). ~0.4 даёт хребты без резкости.")]
+    [Range(0f, 1f)] public float ridgeStrength = 0.4f;
+
+    [Header("Масштаб мира (источник tileSize)")]
+    public ChunkedTerrainBuilder chunkedBuilder;
+    public SeamlessTerrainBuilder seamlessBuilder;
+
+    [Header("Сглаживание")]
+    [Tooltip("Проходов box-сглаживания 3×3 по готовой карте. Убирает дырки, одиночные лужи, резкие переходы; делает берега пологими.")]
+    public int smoothPasses = 2;
 
     [Header("Сид")]
     public bool randomSeed = true;
@@ -45,10 +56,15 @@ public class HeightMapGenerator : MonoBehaviour
 
         heightMap = new float[width, depth];
 
+        float ts = ResolveTileSize();
+
         if (useJobs && width * depth > jobsMinCells)
-            GenerateWithJobs();
+            GenerateWithJobs(ts);
         else
-            GenerateSimple();
+            GenerateSimple(ts);
+
+        SmoothHeightMap();      // общий пост-проход для Simple и Job
+        RenormalizeHeights();   // растягиваем в [0, maxHeight], чтобы сглаживание не воровало высоту
 
         isGenerated = true;
 
@@ -56,27 +72,30 @@ public class HeightMapGenerator : MonoBehaviour
         onHeightMapGenerated?.Invoke(heightMap);
     }
 
-    private void GenerateSimple()
+    private void GenerateSimple(float tileSize)
     {
         float seedOffset = seed * 0.1f;
 
         const int octaves = 4;
-        const float persistence = 0.5f;
+        const float persistence = 0.4f;
         const float lacunarity = 2f;
 
         for (int x = 0; x < width; x++)
         {
             for (int z = 0; z < depth; z++)
             {
-                float bx = x * noiseScale + seedOffset;
-                float bz = z * noiseScale + seedOffset;
+                float bx = x * tileSize * noiseScale + seedOffset;
+                float bz = z * tileSize * noiseScale + seedOffset;
 
-                // Фрактальный шум (fBm): крупная форма + детализация.
+                // Фрактальный шум (fBm) + опциональная «хребтистость» (ridged).
                 // Крупные октавы дают связные бассейны (низины) и водоразделы.
                 float amp = 1f, freq = 1f, sum = 0f, ampMax = 0f;
                 for (int o = 0; o < octaves; o++)
                 {
-                    sum += Mathf.PerlinNoise(bx * freq, bz * freq) * amp;
+                    float n = Mathf.PerlinNoise(bx * freq, bz * freq);   // [0,1]
+                    float r = 1f - Mathf.Abs(2f * n - 1f);               // гребень: пик у n=0.5
+                    float v = Mathf.Lerp(n, r, ridgeStrength);
+                    sum += v * amp;
                     ampMax += amp;
                     amp *= persistence;
                     freq *= lacunarity;
@@ -87,7 +106,7 @@ public class HeightMapGenerator : MonoBehaviour
         }
     }
 
-    private void GenerateWithJobs()
+    private void GenerateWithJobs(float tileSize)
     {
         int totalCells = width * depth;
         NativeArray<float> heightsArray = new NativeArray<float>(totalCells, Allocator.TempJob);
@@ -96,7 +115,9 @@ public class HeightMapGenerator : MonoBehaviour
         {
             width = width,
             noiseScale = noiseScale,
+            tileSize = tileSize,
             maxHeight = maxHeight,
+            ridgeStrength = ridgeStrength,
             seed = seed,
             heights = heightsArray
         };
@@ -123,7 +144,9 @@ public class HeightMapGenerator : MonoBehaviour
     {
         public int width;
         public float noiseScale;
+        public float tileSize;
         public float maxHeight;
+        public float ridgeStrength;
         public int seed;
         public NativeArray<float> heights;
 
@@ -133,12 +156,12 @@ public class HeightMapGenerator : MonoBehaviour
             int z = index / width;
 
             float seedOffset = seed * 0.1f;
-            float bx = x * noiseScale + seedOffset;
-            float bz = z * noiseScale + seedOffset;
+            float bx = x * tileSize * noiseScale + seedOffset;
+            float bz = z * tileSize * noiseScale + seedOffset;
 
-            // Фрактальный шум (fBm): крупная форма + детализация.
+            // Фрактальный шум (fBm) + опциональная «хребтистость» (ridged).
             const int octaves = 4;
-            const float persistence = 0.5f;
+            const float persistence = 0.4f;
             const float lacunarity = 2f;
 
             float amp = 1f, freq = 1f, sum = 0f, ampMax = 0f;
@@ -147,7 +170,9 @@ public class HeightMapGenerator : MonoBehaviour
                 float2 coord = new float2(bx * freq, bz * freq);
                 // cnoise: [-1, 1] → нормализуем в [0, 1]
                 float n = Unity.Mathematics.noise.cnoise(coord) * 0.5f + 0.5f;
-                sum += n * amp;
+                float r = 1f - math.abs(2f * n - 1f);               // гребень: пик у n=0.5
+                float v = math.lerp(n, r, ridgeStrength);
+                sum += v * amp;
                 ampMax += amp;
                 amp *= persistence;
                 freq *= lacunarity;
@@ -155,6 +180,84 @@ public class HeightMapGenerator : MonoBehaviour
 
             heights[index] = (sum / ampMax) * maxHeight;
         }
+    }
+
+    /// <summary>
+    /// Сглаживает готовую карту высот box-фильтром 3×3 за smoothPasses проходов.
+    /// Один общий пост-проход для обоих путей генерации (Simple и Job):
+    /// убирает одиночные ямы/лужи, рваные берега и резкие переходы, делает берега пологими.
+    /// </summary>
+    private void SmoothHeightMap()
+    {
+        if (smoothPasses <= 0 || heightMap == null) return;
+
+        float[,] tmp = new float[width, depth];
+
+        for (int p = 0; p < smoothPasses; p++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                for (int z = 0; z < depth; z++)
+                {
+                    float sum = 0f;
+                    int cnt = 0;
+                    for (int ox = -1; ox <= 1; ox++)
+                    {
+                        for (int oz = -1; oz <= 1; oz++)
+                        {
+                            int nx = x + ox;
+                            int nz = z + oz;
+                            if (nx < 0 || nx >= width || nz < 0 || nz >= depth) continue;
+                            sum += heightMap[nx, nz];
+                            cnt++;
+                        }
+                    }
+                    tmp[x, z] = sum / cnt;
+                }
+            }
+
+            // переносим результат прохода обратно
+            for (int x = 0; x < width; x++)
+                for (int z = 0; z < depth; z++)
+                    heightMap[x, z] = tmp[x, z];
+        }
+    }
+
+    /// <summary>Берёт tileSize из билдера, чтобы шум считался в мировых единицах.</summary>
+    private float ResolveTileSize()
+    {
+        if (chunkedBuilder == null) chunkedBuilder = GetComponent<ChunkedTerrainBuilder>();
+        if (seamlessBuilder == null) seamlessBuilder = GetComponent<SeamlessTerrainBuilder>();
+        if (chunkedBuilder != null) return chunkedBuilder.tileSize;
+        if (seamlessBuilder != null) return seamlessBuilder.tileSize;
+        return 1f;
+    }
+
+    /// <summary>
+    /// Растягивает карту высот в [0, maxHeight]. Возвращает рельефу полную амплитуду,
+    /// которую съедают сглаживание и нормировка fBm. После этого maxHeight честно
+    /// задаёт высоту, а smoothPasses влияет только на плавность.
+    /// </summary>
+    private void RenormalizeHeights()
+    {
+        if (heightMap == null) return;
+
+        float min = float.MaxValue, max = float.MinValue;
+        for (int x = 0; x < width; x++)
+            for (int z = 0; z < depth; z++)
+            {
+                float h = heightMap[x, z];
+                if (h < min) min = h;
+                if (h > max) max = h;
+            }
+
+        float range = max - min;
+        if (range < 1e-6f) return;
+
+        float inv = maxHeight / range;
+        for (int x = 0; x < width; x++)
+            for (int z = 0; z < depth; z++)
+                heightMap[x, z] = (heightMap[x, z] - min) * inv;
     }
 
     /// <summary>

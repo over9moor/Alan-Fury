@@ -24,6 +24,7 @@ public class ObjectPlacer : MonoBehaviour
         [Range(0f, 1f)]
         public float spawnChance = 1f; // ����������� ������ ������� ���������� �������
         public float minDistanceBetweenObjects = 1f; // ����������� ���������, ���� ��� ������� ����
+        public LayerMask objectLayer; // слой для заспавненных объектов (Nothing = не менять; напр. Trees для деревьев)
     }
 
     [Header("�������� �����")]
@@ -259,6 +260,8 @@ public class ObjectPlacer : MonoBehaviour
             float scale = Random.Range(objType.minScale, objType.maxScale);
             obj.transform.localScale = Vector3.one * scale;
 
+            ApplyLayer(obj, objType);
+
             placedPositions.Add(worldPos);
             AddToSpatialGrid(worldPos);
             placed++;
@@ -337,6 +340,8 @@ public class ObjectPlacer : MonoBehaviour
             float scale = Random.Range(objType.minScale, objType.maxScale);
             obj.transform.localScale = Vector3.one * scale;
 
+            ApplyLayer(obj, objType);
+
             placedPositions.Add(worldPos);
             AddToSpatialGrid(worldPos);
             if (occupiedCells != null) occupiedCells[cx, cz] = true;
@@ -352,6 +357,30 @@ public class ObjectPlacer : MonoBehaviour
         if (zoneSystem == null) return false;
         var t = zoneSystem.GetTileType(cx, cz);
         return t == TerrainZoneSystem.TileType.Water || t == TerrainZoneSystem.TileType.Road;
+    }
+
+    /// <summary>Назначает слой заспавненному объекту и его детям (если в типе задан objectLayer).</summary>
+    private void ApplyLayer(GameObject obj, ObjectType objType)
+    {
+        int layer = MaskToLayer(objType.objectLayer);
+        if (layer < 0) return;
+        SetLayerRecursive(obj.transform, layer);
+    }
+
+    private static int MaskToLayer(LayerMask mask)
+    {
+        int v = mask.value;
+        if (v == 0) return -1;                 // Nothing → не менять слой
+        for (int i = 0; i < 32; i++)
+            if ((v & (1 << i)) != 0) return i; // берём первый выбранный слой
+        return -1;
+    }
+
+    private static void SetLayerRecursive(Transform t, int layer)
+    {
+        t.gameObject.layer = layer;
+        for (int i = 0; i < t.childCount; i++)
+            SetLayerRecursive(t.GetChild(i), layer);
     }
 
     private GameObject InstantiatePrefab(GameObject prefab, Vector3 position, Quaternion rotation)

@@ -245,9 +245,17 @@ MonoBehaviour:
   rollSpeed: 9
   rollDuration: 0.4
   rollCooldown: 1.2
+  vaultLayers:
+    serializedVersion: 2
+    m_Bits: 128
+  vaultMaxHeight: 2
+  vaultCheckDistance: 0.8
+  vaultDuration: 0.45
+  vaultForwardSpeed: 7
+  vaultRise: 1.5
+  vaultCooldown: 0.8
   rotationSpeed: 15
   gravity: -20
-  animator: {fileID: 1728127724}
   boundary: {fileID: 0}
 --- !u!143 &81622706
 CharacterController:
@@ -1012,6 +1020,7 @@ GameObject:
   - component: {fileID: 1224455444}
   - component: {fileID: 1224455448}
   - component: {fileID: 1224455449}
+  - component: {fileID: 1224455450}
   m_Layer: 0
   m_Name: Alfa
   m_TagString: Untagged
@@ -1049,18 +1058,15 @@ MonoBehaviour:
     stepDistance: 0.9
     stepDuration: 0.18
     stepFrequency: 3.6
-  boundEnterSpeed: 9
-  boundExitSpeed: 6.5
-  boundChargeTime: 0.25
-  boundTakeoffBoost: 1.2
-  maxBoundSpeed: 14
-  boundGroundTime: 0.08
-  minBoundHeight: 0.5
-  maxBoundHeight: 1.4
-  boundReferenceSpeed: 12
-  obstacleLeapHeight: 1.6
-  obstacleProbe: 0.6
-  obstacleMinSpeed: 6
+  vaultLayers:
+    serializedVersion: 2
+    m_Bits: 128
+  vaultMaxHeight: 4
+  vaultCheckDistance: 0.8
+  vaultDuration: 0.45
+  vaultForwardSpeed: 7
+  vaultRise: 1.6
+  vaultCooldown: 0.6
   gravity: -20
   rotationSpeed: 6
   arriveThreshold: 1.5
@@ -1122,7 +1128,7 @@ Transform:
   m_GameObject: {fileID: 1224455443}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 45, y: 5, z: 45}
+  m_LocalPosition: {x: 15.2, y: 5, z: -212.5}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -1169,20 +1175,68 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   perception: {fileID: 1224455445}
   locomotion: {fileID: 1224455444}
-  minDistance: 25
-  maxDistance: 35
+  pathfinder: {fileID: 1950520783}
+  spookRadius: 18
+  stalkMin: 21
+  stalkMax: 35
+  fleeUntilDistance: 50
+  rearAngle: 90
   coverTag: FogPatch
   coverRadius: 6
   coverSnapRadius: 8
-  coverArriveRadius: 5
-  holdSeconds: 3
+  reactDelay: 0.5
+  coverCrossPlayerRadius: 4
   stalkSpeed: 4
-  chaseSpeed: 8
+  retreatSpeed: 8
+  pursueSpeed: 7
   fleeSpeed: 12
-  repositionDistance: 28
-  repositionSpread: 35
+  pathRepathInterval: 0.4
   pressurePerSecond: 0.15
   autoCallWhenPressured: 0
+--- !u!114 &1224455450
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1224455443}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f836c69d1be210643943f298453e0f2d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  heightSource: {fileID: 1950520771}
+  chunkedBuilder: {fileID: 1950520777}
+  seamlessBuilder: {fileID: 0}
+  bandWidth: 9
+  edgePadding: 1
+  falloff:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  useManualBounds: 0
+  manualHalfWidth: 100
+  manualHalfDepth: 100
 --- !u!1001 &1503588177
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1392,7 +1446,8 @@ GameObject:
   - component: {fileID: 1950520780}
   - component: {fileID: 1950520781}
   - component: {fileID: 1950520782}
-  m_Layer: 0
+  - component: {fileID: 1950520783}
+  m_Layer: 7
   m_Name: Terrain
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -1430,10 +1485,13 @@ MonoBehaviour:
     heightOffset: 0
     spawnChance: 10
     minDistanceBetweenObjects: 1
+    objectLayer:
+      serializedVersion: 2
+      m_Bits: 0
   - name: Tree
     prefab: {fileID: 7434248268450739963, guid: 3abe6a6fa5402984eb939942a4aa94cb,
       type: 3}
-    count: 150
+    count: 400
     minHeight: 0
     maxHeight: 5
     randomRotation: 0
@@ -1443,7 +1501,10 @@ MonoBehaviour:
     snapToCellCenter: 1
     heightOffset: 0
     spawnChance: 10
-    minDistanceBetweenObjects: 3
+    minDistanceBetweenObjects: 4
+    objectLayer:
+      serializedVersion: 2
+      m_Bits: 256
   objectsParent: {fileID: 0}
   maxAttemptsPerObject: 30
   useSpacialGrid: 1
@@ -1469,6 +1530,8 @@ MonoBehaviour:
   roadGenerator: {fileID: 1950520782}
   fogCurtain: {fileID: 1950520781}
   fogPlacer: {fileID: 1950520780}
+  pathfinder: {fileID: 0}
+  mapBoundary: {fileID: 0}
   generateOnStart: 1
   clearBeforeGenerate: 1
   logTimings: 1
@@ -1559,7 +1622,11 @@ MonoBehaviour:
   width: 40
   depth: 150
   noiseScale: 0.5
-  maxHeight: 0.7
+  maxHeight: 4
+  ridgeStrength: 0.4
+  chunkedBuilder: {fileID: 0}
+  seamlessBuilder: {fileID: 0}
+  smoothPasses: 2
   randomSeed: 1
   seed: 53692
   useJobs: 1
@@ -1593,9 +1660,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   heightSource: {fileID: 1950520771}
   terrainBuilder: {fileID: 1950520776}
-  chunkedBuilder: {fileID: 0}
+  chunkedBuilder: {fileID: 1950520777}
   zones: []
-  waterPercent: 0.2
+  waterPercent: 0.15
   waterPatchScale: 8
   showWaterInGame: 1
   waterMaterial: {fileID: 0}
@@ -1678,10 +1745,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   heightSource: {fileID: 1950520771}
   terrainBuilder: {fileID: 1950520777}
+  roadGenerator: {fileID: 1950520782}
+  zoneSystem: {fileID: 1950520773}
+  roadClearance: 8
+  lowBandHeight: 0.12
+  betweenChance: 0.15
+  waterFogOffset: 0.1
   fogPrefab: {fileID: 418428478413586072, guid: fbae3b70433cbfc4695fa02948a8032b,
     type: 3}
   parent: {fileID: 0}
-  count: 150
+  count: 90
   minDistanceBetween: 15
   edgeMargin: 12
   heightOffset: 3
@@ -1732,14 +1805,46 @@ MonoBehaviour:
   chunkedBuilder: {fileID: 1950520777}
   roadWidth: 2
   heightWeight: 8
-  waterPenalty: 25
+  waterPenalty: 3
   buildRoadMesh: 1
   roadMaterial: {fileID: 0}
   roadColor: {r: 0.45, g: 0.38, b: 0.28, a: 1}
-  meshHeightOffset: 0.02
+  meshHeightOffset: 0.1
+  flattenAlongRoad: 1
+  maxHeightStep: 0.1
+  shoulderCells: 1
+  shoulderBlend: 0.5
+  buildBridges: 1
+  bridgeClearance: 0.15
+  minBridgeLength: 2
+  bridgeMaterial: {fileID: 0}
+  bridgeColor: {r: 0.5566038, g: 0.47576636, b: 0.385947, a: 1}
   showGizmos: 1
   roadGizmoColor: {r: 0.6, g: 0.5, b: 0.2, a: 0.75}
   gizmoHeight: 0.06
+--- !u!114 &1950520783
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1950520764}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a4740808acc880408a278acfcbdd9c0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  heightSource: {fileID: 1950520771}
+  zoneSystem: {fileID: 1950520773}
+  chunkedBuilder: {fileID: 1950520777}
+  seamlessBuilder: {fileID: 1950520776}
+  obstacleMask:
+    serializedVersion: 2
+    m_Bits: 256
+  checkBoxSize: {x: 2, y: 4, z: 2}
+  waterCostMultiplier: 4
+  nearestSearchRadius: 32
+  drawGizmos: 1
 --- !u!4 &2057484379 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 0be3360d1aa2ca04880b03e0d21c146d,

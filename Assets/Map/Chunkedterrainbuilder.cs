@@ -126,6 +126,13 @@ public class ChunkedTerrainBuilder : MonoBehaviour
         chunkGO.transform.SetParent(transform);
         chunkGO.isStatic = true; // важно для batching
 
+        // Кладём чанк на слой "Terrain" (для рейкастов/паркура/граунд-чеков)
+        int terrainLayer = LayerMask.NameToLayer("Terrain");
+        if (terrainLayer >= 0)
+            chunkGO.layer = terrainLayer;
+        else
+            Debug.LogWarning("Слой 'Terrain' не найден в Tags & Layers — чанк остался на слое по умолчанию.");
+
         var mesh = new Mesh();
         mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
         mesh.vertices = verts.ToArray();
