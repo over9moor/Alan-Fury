@@ -612,6 +612,7 @@ GameObject:
   - component: {fileID: 330585544}
   - component: {fileID: 330585547}
   - component: {fileID: 330585548}
+  - component: {fileID: 330585549}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -766,6 +767,20 @@ MonoBehaviour:
     m_Center: {x: 0, y: 0, z: 0}
     m_Extent: {x: 0, y: 0, z: 0}
   clampToMap: 0
+--- !u!114 &330585549
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 330585543}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 673db127ebcbeb1469f3f1386b9de813, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  Mode: 0
+  PixelSize: 0.032
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
@@ -996,6 +1011,11 @@ PrefabInstance:
       propertyPath: m_Name
       value: Cube
       objectReference: {fileID: 0}
+    - target: {fileID: 1670844918676632126, guid: a603d90d41a846a4fabc6adf374d5c41,
+        type: 3}
+      propertyPath: m_Materials.Array.data[0]
+      value: 
+      objectReference: {fileID: 2100000, guid: 938a0fc3023a93045b9bb4ff3174ecfd, type: 2}
     - target: {fileID: 5866666021909216657, guid: a603d90d41a846a4fabc6adf374d5c41,
         type: 3}
       propertyPath: m_Controller
@@ -1004,8 +1024,36 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: -521149284524327058, guid: a603d90d41a846a4fabc6adf374d5c41,
+        type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1119076494}
   m_SourcePrefab: {fileID: 100100000, guid: a603d90d41a846a4fabc6adf374d5c41, type: 3}
+--- !u!1 &1119076491 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: -521149284524327058, guid: a603d90d41a846a4fabc6adf374d5c41,
+    type: 3}
+  m_PrefabInstance: {fileID: 913220890}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1119076494
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1119076491}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 15f2cae7a75dc1d479c03956c57c10a9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  SnapPosition: 1
+  SnapEulerAngles: 1
+  SnapAngleStrategy: 0
+  angleResolution: 30
+  AlignPixelGrid: 0
+  PixelGridReference: {fileID: 0}
 --- !u!1 &1224455443
 GameObject:
   m_ObjectHideFlags: 0
@@ -1303,7 +1351,11 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 0be3360d1aa2ca04880b03e0d21c146d,
+        type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2057484382}
   m_SourcePrefab: {fileID: 100100000, guid: 0be3360d1aa2ca04880b03e0d21c146d, type: 3}
 --- !u!4 &1728127723 stripped
 Transform:
@@ -1424,6 +1476,12 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1854385148}
   m_Mesh: {fileID: 10208, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!1 &1932911437 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 0be3360d1aa2ca04880b03e0d21c146d,
+    type: 3}
+  m_PrefabInstance: {fileID: 1503588177}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1950520764
 GameObject:
   m_ObjectHideFlags: 0
@@ -1851,6 +1909,24 @@ Transform:
     type: 3}
   m_PrefabInstance: {fileID: 1503588177}
   m_PrefabAsset: {fileID: 0}
+--- !u!114 &2057484382
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1932911437}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 15f2cae7a75dc1d479c03956c57c10a9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  SnapPosition: 1
+  SnapEulerAngles: 1
+  SnapAngleStrategy: 0
+  angleResolution: 30
+  AlignPixelGrid: 0
+  PixelGridReference: {fileID: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
