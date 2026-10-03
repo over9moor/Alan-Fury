@@ -28,7 +28,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 10, z: 0}
-  m_LocalScale: {x: 1, y: 0.047944, z: 1}
+  m_LocalScale: {x: 1, y: 0.05, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 3200823202175224380}
@@ -146,8 +146,8 @@ Transform:
   m_GameObject: {fileID: 3619475697102130587}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalPosition: {x: 0, y: 0.74, z: 0}
+  m_LocalScale: {x: 2.5, y: 2.5, z: 2.5}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 3200823202175224380}
@@ -278,7 +278,7 @@ Transform:
   m_GameObject: {fileID: 6846430933918887357}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.6, y: 15, z: -288.6}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -523,6 +523,7 @@ MonoBehaviour:
   heavyChargeThreshold: 0.55
   sheathVisualDelay: 0.35
   combatLingerSeconds: 15
+  battleStepHold: 10
   sheathAfterPeaceSeconds: 0
   combatFaceRange: 10
   parryWindow: 0.25
@@ -934,7 +935,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  GlobalObjectIdHash: 1352778639
+  GlobalObjectIdHash: 532751515
   InScenePlacedSourceGlobalObjectIdHash: 0
   AlwaysReplicateAsRoot: 0
   SynchronizeTransform: 1
@@ -1518,7 +1519,8 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 2100000, guid: 3704e23acf6256b4b910b0cebd2a51e2, type: 2}
     m_RemovedComponents: []
-    m_RemovedGameObjects: []
+    m_RemovedGameObjects:
+    - {fileID: 3892258076154528811, guid: 644f99b0a88f593458f3948f1001ea7b, type: 3}
     m_AddedGameObjects: []
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 3602605360671352151, guid: 644f99b0a88f593458f3948f1001ea7b,
