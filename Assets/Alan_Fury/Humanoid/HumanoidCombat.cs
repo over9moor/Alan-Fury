@@ -696,7 +696,7 @@ public class HumanoidCombat : MonoBehaviour
         IsWindingUp = true;
         stateTimer = wait;
         ShowPreparedTelegraph();
-        if (hitbox != null && hitbox.visual != null) hitbox.visual.ShowWindup();
+        if (hitbox != null && hitbox.visual != null) hitbox.visual.ShowWindup(_prep.combo);
     }
 
     void StartHoldAttack()
@@ -714,7 +714,7 @@ public class HumanoidCombat : MonoBehaviour
         if (CurrentStance == CombatStance.High)
             DropChargeToLow();
         if (hitbox != null && hitbox.visual != null)
-            hitbox.visual.ShowWindup();
+            hitbox.visual.ShowWindup(0);
     }
 
     void ClearStepBuffer()
